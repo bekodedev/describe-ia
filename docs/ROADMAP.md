@@ -29,19 +29,19 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 
 ## Tasks
 
-| ID  | Title                                                              | Depends on         | Est. (h) | Status |
-| --- | ------------------------------------------------------------------ | ------------------ | -------- | ------ |
-| T01 | Monorepo bootstrap, TypeScript tooling and Docker Compose          | —                  | 3        | [ ]    |
-| T02 | Database schema, migrations and demo user                          | T01                | 3        | [ ]    |
-| T03 | HTTP LLM client: config, timeouts, retries, token-usage logging    | T01, T02           | 4        | [ ]    |
-| T04 | Naive prompt v1 and generation service                             | T03                | 3        | [ ]    |
-| T05 | Structured output, zod validation and retry on invalid format      | T04                | 4        | [ ]    |
-| T06 | API endpoints (generate, list, view, edit description)             | T02, T05           | 4        | [ ]    |
-| T07 | Optional photo: upload, validation, multimodal request             | T06                | 4        | [ ]    |
-| T08 | Next.js frontend: form, results page, copy and edit                | T06, T07           | 6        | [ ]    |
-| T09 | Cost tracking and cost report (per description / per 1,000)        | T05, T06, T08      | 3        | [ ]    |
-| T10 | Tests, demo data and end-to-end demo walkthrough                   | T01–T09            | 5        | [ ]    |
-| T11 | Release preparation: public/private split, README, tag v0.1.0      | T01–T10            | 3        | [ ]    |
+| ID  | Title                                                           | Depends on    | Est. (h) | Status |
+| --- | --------------------------------------------------------------- | ------------- | -------- | ------ |
+| T01 | Monorepo bootstrap, TypeScript tooling and Docker Compose       | —             | 3        | [x]    |
+| T02 | Database schema, migrations and demo user                       | T01           | 3        | [ ]    |
+| T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [ ]    |
+| T04 | Naive prompt v1 and generation service                          | T03           | 3        | [ ]    |
+| T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [ ]    |
+| T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [ ]    |
+| T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [ ]    |
+| T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [ ]    |
+| T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [ ]    |
+| T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [ ]    |
+| T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [ ]    |
 
 Total: about 42 hours.
 
@@ -67,16 +67,18 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Create an empty but fully wired monorepo where `docker compose up` starts Postgres, the API and the web app, and where lint, typecheck and test commands already run.
 
 **Deliverables.**
+
 - Root `package.json` with `packageManager` pinned to pnpm, `pnpm-workspace.yaml` (`apps/*`), `tsconfig.base.json`, ESLint + Prettier config, `.editorconfig`.
-- `apps/api`: Express app with `GET /health`, config module that reads and validates env vars with zod (`DATABASE_URL`, `PORT`, `OUTPUT_LANGUAGE` as 2-letter ISO 639-1 with default `es`, and the LLM variables as optional until T03), Vitest set up with one smoke test.
+- `apps/api`: Express app with `GET /health` (`{"status":"ok","db":"ok"|"down"}` from a real `SELECT 1`), config module that reads and validates env vars with zod (`DATABASE_URL`, `PORT`, `OUTPUT_LANGUAGE` as 2-letter ISO 639-1 with default `es`, `ANTHROPIC_API_KEY` and `LLM_MODEL`, both required at startup with a readable error), Vitest set up with one smoke test.
 - `apps/web`: Next.js app with a placeholder home page.
 - `apps/api/Dockerfile`, `apps/web/Dockerfile`, `docker-compose.yml` (`postgres` with healthcheck and named volume, `api`, `web`).
 - `.env.example`, `.gitignore` (with the required entries), `CLAUDE.md`, `.internal/devlog.md` present locally.
 - CLAUDE.md commands updated from TODO to real ones.
 
 **Acceptance criteria.**
+
 - `docker compose up -d --build` then `docker compose ps` shows `postgres` healthy, `api` and `web` running.
-- `curl $API/health` returns `{"status":"ok"}`; `curl -s $WEB` returns HTTP 200.
+- `curl $API/health` returns `{"status":"ok","db":"ok"}`; `curl -s $WEB` returns HTTP 200.
 - `pnpm lint`, `pnpm typecheck` and `pnpm test` exit with code 0.
 - Starting the API with `OUTPUT_LANGUAGE=english` fails with a clear config error; with no value it uses `es`.
 - `git status` does not list `.env`, `.internal/`, `uploads/`.
@@ -90,6 +92,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Define the PostgreSQL schema with plain SQL migrations and a demo user injected by a middleware, so every row already carries a `user_id`.
 
 **Deliverables.**
+
 - `node-pg-migrate` configured with SQL migrations in `apps/api/migrations/`.
 - Tables:
   - `users` (id uuid PK, email, name, created_at).
@@ -102,6 +105,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Scripts: `migrate:up`, `migrate:down`, `migrate:create`.
 
 **Acceptance criteria.**
+
 - From an empty database, `docker compose up -d` results in all four tables (`docker compose exec postgres psql -U postgres -d describeia -c "\dt"`).
 - `pnpm --filter api migrate:down` followed by `migrate:up` works with no error (reversible).
 - `SELECT count(*) FROM users` returns 1; running migrations twice keeps it at 1.
@@ -117,8 +121,9 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Provide one isolated function that calls the Anthropic Messages API with `fetch`, handles transport failures, and records every call in `llm_calls`.
 
 **Deliverables.**
+
 - `apps/api/src/llm/client.ts` exposing a single function (for example `callModel(request): Promise<ModelResponse>`); no other file talks to the provider.
-- Env vars: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (required, no hard-coded model in code), `ANTHROPIC_BASE_URL` (default official URL), `LLM_TIMEOUT_MS`, `LLM_MAX_RETRIES`. `.env.example` defaults `ANTHROPIC_MODEL` to the cheaper development model `claude-haiku-4-5-20251001` and documents `claude-sonnet-5-5` as the suggested production value; switching is only an `.env` change.
+- Env vars: `ANTHROPIC_API_KEY`, `LLM_MODEL` (required, no hard-coded model in code), `ANTHROPIC_BASE_URL` (default official URL), `LLM_TIMEOUT_MS`, `LLM_MAX_RETRIES`. `.env.example` defaults `LLM_MODEL` to the cheaper development model `claude-haiku-4-5-20251001` and documents `claude-sonnet-5-5` as the suggested production value; switching is only an `.env` change.
 - Timeout through `AbortController`.
 - Retries with exponential backoff and jitter on network errors, timeouts, HTTP 429 and 5xx; honour `retry-after`; no retry on other 4xx.
 - After each call (success or failure) an `llm_calls` row is written with model, tokens, latency and status; the API key is never logged.
@@ -126,6 +131,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - A `pnpm --filter api llm:smoke` script that sends one tiny prompt to the real API and prints the reply and token usage.
 
 **Acceptance criteria.**
+
 - `pnpm test` includes tests that, with a stubbed `fetch`, prove: success is logged with tokens; 429 then 200 succeeds after one retry; a 400 is not retried; a hung request ends with status `timeout`; each attempt has its own `llm_calls` row.
 - `pnpm --filter api llm:smoke` (real key) prints a reply and non-zero token counts, and a matching row appears in `llm_calls`.
 - With an invalid key the smoke script exits non-zero and a `http_error` row is stored, with no key in the log output.
@@ -139,6 +145,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Get a first end-to-end generation working with a deliberately simple prompt and no structured output, and put in place the versioned prompt loader with private/public fallback.
 
 **Deliverables.**
+
 - `apps/api/prompts/public/description.v1.md` with `{{title}}`, `{{category}}` and `{{language}}` variables (language comes from `OUTPUT_LANGUAGE`, never hard-coded).
 - Prompt loader: looks first in `apps/api/prompts/private/<name>`, falls back to `apps/api/prompts/public/<name>`, logs which one was used (name only) and reports the prompt version; unit-tested.
 - `apps/api/src/services/generation.ts`: builds the prompt, calls the LLM client, returns the raw text.
@@ -146,6 +153,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Nothing is committed under `apps/api/prompts/private/`; the loader must work when the folder does not exist.
 
 **Acceptance criteria.**
+
 - Loader tests: private file present → private used; absent → public used; variables replaced; unknown variable placeholders raise an error.
 - `pnpm --filter api generate:demo "Stainless steel water bottle 750 ml" "Sports"` prints text in the language set in `OUTPUT_LANGUAGE`; changing it to `en` changes the output language with no code change.
 - An `llm_calls` row with `prompt_version = description.v1` exists after the run.
@@ -160,6 +168,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Make the model return the 3 variants in a machine-checkable shape, validate it with zod, and retry when the shape is wrong.
 
 **Deliverables.**
+
 - `description.v2.md` prompt (public) asking for the 3 variants, with length guidance per variant.
 - Structured output through a forced tool call (`tools` + `tool_choice`) on the Messages API, still with plain `fetch`.
 - zod schema `GenerationResult`: `short`, `medium`, `seo` as non-empty strings with sensible max lengths.
@@ -168,6 +177,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Service returns a validated object instead of raw text.
 
 **Acceptance criteria.**
+
 - Tests with stubbed responses: valid → passes; missing field → retried and succeeds; three consecutive bad answers → `InvalidModelOutputError` and 3 `invalid_format` rows; extra fields are stripped.
 - `pnpm --filter api generate:demo "Stainless steel water bottle 750 ml" "Sports"` prints three distinct variants, validated.
 - Running it 10 times against the real API yields 10 valid results (note the number of retries needed in the devlog).
@@ -181,6 +191,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Expose the product flow over HTTP, persisting products and descriptions and validating all input.
 
 **Deliverables.**
+
 - `POST /api/generations` (JSON: `title`, `category`) → creates the product, calls the service, stores the 3 descriptions (`original_text`) and returns the product with its descriptions. Product and descriptions are saved in one transaction.
 - `GET /api/products` → history for the demo user, newest first, with pagination (`limit`, `offset`).
 - `GET /api/products/:id` → product with its 3 descriptions.
@@ -190,6 +201,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Repositories with plain SQL in `apps/api/src/db/`.
 
 **Acceptance criteria.**
+
 - `curl -X POST $API/api/generations -H 'content-type: application/json' -d '{"title":"Stainless steel water bottle 750 ml","category":"Sports"}'` returns 201 with 3 descriptions.
 - `curl $API/api/products` lists it; `curl $API/api/products/<id>` returns it with 3 descriptions.
 - `curl -X PATCH $API/api/descriptions/<id> -H 'content-type: application/json' -d '{"text":"My edit"}'` returns 200 and a later GET shows `edited_text` set and `original_text` unchanged.
@@ -206,6 +218,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Let a product include one photo that is validated, stored locally and sent to the model so the descriptions can use what is visible in it.
 
 **Deliverables.**
+
 - `POST /api/generations` accepts `multipart/form-data` (`title`, `category`, optional `image`) as well as JSON.
 - Validation: allowed types `image/jpeg`, `image/png`, `image/webp` checked by content (magic bytes), not only by header; max size configurable (`MAX_IMAGE_BYTES`, default 5 MB); one file only.
 - Files stored under `uploads/` with a generated file name (never the client's name); path saved in `products.image_path`; `uploads` is a Docker volume.
@@ -215,6 +228,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - `.env.example` updated with `MAX_IMAGE_BYTES` and `UPLOADS_DIR`.
 
 **Acceptance criteria.**
+
 - `curl -X POST $API/api/generations -F title='Ceramic mug' -F category='Home' -F image=@sample.jpg` returns 201 with 3 descriptions and a non-null `image_path` on the product.
 - A `.txt` file renamed to `.jpg` returns 400; a file over `MAX_IMAGE_BYTES` returns 413; two files return 400.
 - The `llm_calls` row for the request reports higher `input_tokens` than the same request without an image.
@@ -230,6 +244,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Provide a minimal but usable UI covering the whole flow: create, view, copy, edit and browse history.
 
 **Deliverables.**
+
 - Pages: `/` (form with title, category, optional photo with preview), `/products/[id]` (results), `/history` (list).
 - Results page: three cards (short, medium, SEO), each with **Copy** (clipboard) and **Edit** (inline textarea, save, and "restore original").
 - Loading state during generation and clear error states (validation, model failure, network).
@@ -238,6 +253,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - CORS configured on the API for the web origin.
 
 **Acceptance criteria.**
+
 - With `docker compose up -d`, opening `$WEB`, filling the form (with and without photo) and submitting leads to `/products/<id>` showing 3 descriptions.
 - Copy places the exact text in the clipboard; Edit + Save persists after a page reload; "Restore original" brings back the original text.
 - `/history` lists the created products, newest first, each linking to its result page.
@@ -253,6 +269,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Turn recorded token usage into money and report what a description really costs.
 
 **Deliverables.**
+
 - Pricing table in a versioned config file (`apps/api/config/pricing.json`) keyed by model id (must include both the development and the production model) with input and output prices per million tokens, plus a note on the date the prices were checked; unknown model → `cost_usd` stays null and a warning is logged.
 - Cost computed and stored in `llm_calls.cost_usd` at write time (from tokens × prices).
 - `GET /api/reports/cost` returning: total calls, successful and failed calls, total cost, cost per successful generation, cost per description (3 per generation), projected cost per 1,000 descriptions, average latency, and the cost wasted on failed/invalid calls.
@@ -260,6 +277,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - `pnpm --filter api report:cost` prints the same report in the terminal.
 
 **Acceptance criteria.**
+
 - Unit tests: known token counts and prices give the exact expected cost; unknown model gives null.
 - After 3 generations, `curl $API/api/reports/cost` returns totals consistent with `SELECT sum(cost_usd) FROM llm_calls` and `cost_per_1000_descriptions = cost_per_description * 1000`.
 - The `/costs` page shows the same numbers as the endpoint.
@@ -274,6 +292,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Close quality gaps with cross-cutting tests, deterministic demo data and a documented walkthrough that anyone can follow.
 
 **Deliverables.**
+
 - Coverage review: missing unit/integration tests for services, repositories and routes, run against a real Postgres (the compose one or a test database).
 - One end-to-end test of the full API flow (generate → list → view → edit → report) with the LLM stubbed.
 - `pnpm --filter api seed:demo`: creates about 10 sample products (with and without photo, several categories) through the real service, so it needs the API key; plus a fixtures option that inserts pre-written descriptions with no LLM calls.
@@ -281,6 +300,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - `docs/DEMO.md`: step-by-step walkthrough from clean clone to seeing the cost report, with expected outputs.
 
 **Acceptance criteria.**
+
 - `pnpm test` passes in a clean environment with no API key set.
 - `pnpm --filter api seed:demo --fixtures` populates history without any LLM call (`llm_calls` unchanged).
 - Following `docs/DEMO.md` literally on a clean clone produces the outcomes it describes.
@@ -295,6 +315,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Goal.** Make the repository ready to be public and tag the first release.
 
 **Deliverables.**
+
 - Audit that the repo works with no private files: the loader falls back to the public prompts everywhere; a test asserts it.
 - `README.md`: what it is, features, architecture diagram, quick start (`cp .env.example .env`, `docker compose up`), configuration table, API overview, project structure, and an honest "What is not included" section (real auth, roles, queues, billing, bulk import, and that the optimized production prompt is not part of the public repo).
 - `CHANGELOG.md` with the `0.1.0` entry, `LICENSE`, `.env.example` reviewed line by line.
@@ -302,6 +323,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Tag `v0.1.0` (annotated) on the final commit.
 
 **Acceptance criteria.**
+
 - `git clone` into a new folder, `cp .env.example .env`, add the API key, `docker compose up`: the full MVP Definition of Done works with no manual step.
 - `git ls-files | grep -E '(^\.internal/|prompts/private/|\.private\.|^\.env$|^uploads/)'` prints nothing.
 - Removing `apps/api/prompts/private/` (if present) and running `pnpm test` still passes.
@@ -314,15 +336,15 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## Risks
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| **Inconsistent LLM format.** The model may return missing fields, extra text or wrong types. | Broken results, failed requests. | Forced tool call for structure (T05), zod validation, retry with error feedback, every invalid attempt logged, typed error and a clear 502 after retries. |
-| **Rate limits and provider outages.** 429/5xx from the API. | Failed generations, slow responses. | Timeouts, exponential backoff with jitter honouring `retry-after` (T03), clear user-facing error, failures logged with status. |
-| **Cost.** Retries, long prompts and images raise the price per description. | Unit economics unclear or wrong. | Token and cost logging from T03/T09, cost report, failed-call cost shown separately, model configurable so a cheaper one can be tried, output length limits. |
-| **Image size.** Large photos inflate tokens, latency and memory, and the provider limits image size. | Slow or rejected requests, higher cost. | Type and size validation by content (T07), 5 MB default limit, one image per request; resizing is listed as future work. |
-| **Price drift.** Provider prices change. | Reports become inaccurate. | Prices in a dated config file (T09), unknown model yields null cost instead of a wrong number. |
-| **Prompt quality regressions.** Changing prompts silently lowers quality. | Worse descriptions. | Versioned prompt files, `prompt_version` stored in every `llm_calls` row. |
-| **Photo content mismatch.** The model may invent attributes not visible in the photo. | Wrong product claims. | Explicit instruction to describe only what is visible (T07); users can edit every variant. |
+| Risk                                                                                                 | Impact                                  | Mitigation                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Inconsistent LLM format.** The model may return missing fields, extra text or wrong types.         | Broken results, failed requests.        | Forced tool call for structure (T05), zod validation, retry with error feedback, every invalid attempt logged, typed error and a clear 502 after retries.    |
+| **Rate limits and provider outages.** 429/5xx from the API.                                          | Failed generations, slow responses.     | Timeouts, exponential backoff with jitter honouring `retry-after` (T03), clear user-facing error, failures logged with status.                               |
+| **Cost.** Retries, long prompts and images raise the price per description.                          | Unit economics unclear or wrong.        | Token and cost logging from T03/T09, cost report, failed-call cost shown separately, model configurable so a cheaper one can be tried, output length limits. |
+| **Image size.** Large photos inflate tokens, latency and memory, and the provider limits image size. | Slow or rejected requests, higher cost. | Type and size validation by content (T07), 5 MB default limit, one image per request; resizing is listed as future work.                                     |
+| **Price drift.** Provider prices change.                                                             | Reports become inaccurate.              | Prices in a dated config file (T09), unknown model yields null cost instead of a wrong number.                                                               |
+| **Prompt quality regressions.** Changing prompts silently lowers quality.                            | Worse descriptions.                     | Versioned prompt files, `prompt_version` stored in every `llm_calls` row.                                                                                    |
+| **Photo content mismatch.** The model may invent attributes not visible in the photo.                | Wrong product claims.                   | Explicit instruction to describe only what is visible (T07); users can edit every variant.                                                                   |
 
 ## Future directions
 

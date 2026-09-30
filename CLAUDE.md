@@ -6,10 +6,10 @@ Read [docs/PROJECT.md](docs/PROJECT.md) for scope and [docs/ROADMAP.md](docs/ROA
 
 - Monorepo with pnpm workspaces: `apps/api` (Node.js + TypeScript + Express) and `apps/web` (Next.js, minimal UI).
 - PostgreSQL with plain SQL migrations (`node-pg-migrate`) and the `pg` driver. No ORM.
-- LLM: Anthropic Messages API called with plain `fetch`. No agent SDKs or frameworks. The model comes from `ANTHROPIC_MODEL` (cheaper model for development, better one for production, both set in `.env`); never hard-code it.
+- LLM: Anthropic Messages API called with plain `fetch`. No agent SDKs or frameworks. The model comes from `LLM_MODEL` (cheaper model for development, better one for production, both set in `.env`); never hard-code it.
 - Validation with zod for user input and model output. Tests with Vitest.
 - Package manager: pnpm (never npm or yarn; commit `pnpm-lock.yaml`).
-- Docker Compose runs the whole local environment.
+- Docker Compose runs the whole local environment. The API container uses `pnpm --filter api dev:poll` (nodemon polling) because file events do not cross bind mounts on Windows; the web container uses `WATCHPACK_POLLING`.
 - Output language of generated descriptions comes from `OUTPUT_LANGUAGE` (ISO 639-1, default `es`) and is passed to prompts as `{{language}}`. Never hard-code it.
 - Everything in the repo (code, comments, UI, docs, commit messages) is written in English.
 - No real authentication: a fixed demo user is injected by a middleware. Keep the `user_id` column on user-owned tables.
@@ -38,18 +38,19 @@ docs/                PROJECT.md, ROADMAP.md, DEMO.md
 
 Commands marked TODO do not exist yet; the task that creates them replaces TODO with the real command.
 
-| Purpose             | Command                                              | Status |
-| ------------------- | ---------------------------------------------------- | ------ |
-| Start everything    | `docker compose up`                                  | TODO (T01) |
-| Dev (api / web)     | `pnpm --filter api dev` / `pnpm --filter web dev` | TODO (T01) |
-| Test                | `pnpm test`                                           | TODO (T01) |
-| Lint                | `pnpm lint`                                       | TODO (T01) |
-| Typecheck           | `pnpm typecheck`                                  | TODO (T01) |
-| Migrate up / down   | `pnpm --filter api migrate:up` / `migrate:down`    | TODO (T02) |
-| New migration       | `pnpm --filter api migrate:create <name>`       | TODO (T02) |
-| LLM smoke test      | `pnpm --filter api llm:smoke`                      | TODO (T03) |
-| Cost report         | `pnpm --filter api report:cost`                    | TODO (T09) |
-| Seed demo data      | `pnpm --filter api seed:demo`                      | TODO (T10) |
+| Purpose           | Command                                                                | Status     |
+| ----------------- | ---------------------------------------------------------------------- | ---------- |
+| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                | done       |
+| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev` | done       |
+| Test              | `pnpm test`                                                            | done       |
+| Build             | `pnpm build`                                                           | done       |
+| Lint              | `pnpm lint`                                                            | done       |
+| Typecheck         | `pnpm typecheck`                                                       | done       |
+| Migrate up / down | `pnpm --filter api migrate:up` / `migrate:down`                        | TODO (T02) |
+| New migration     | `pnpm --filter api migrate:create <name>`                              | TODO (T02) |
+| LLM smoke test    | `pnpm --filter api llm:smoke`                                          | TODO (T03) |
+| Cost report       | `pnpm --filter api report:cost`                                        | TODO (T09) |
+| Seed demo data    | `pnpm --filter api seed:demo`                                          | TODO (T10) |
 
 ## Working rules
 
