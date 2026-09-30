@@ -46,11 +46,12 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 | Build             | `pnpm build`                                                           | done       |
 | Lint              | `pnpm lint`                                                            | done       |
 | Typecheck         | `pnpm typecheck`                                                       | done       |
-| Migrate up / down | `pnpm --filter api migrate:up` / `migrate:down`                        | TODO (T02) |
-| New migration     | `pnpm --filter api migrate:create <name>`                              | TODO (T02) |
+| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                           | done       |
+| New migration     | `pnpm --filter api migrate:create <name>`                              | done       |
 | LLM smoke test    | `pnpm --filter api llm:smoke`                                          | TODO (T03) |
 | Cost report       | `pnpm --filter api report:cost`                                        | TODO (T09) |
-| Seed demo data    | `pnpm --filter api seed:demo`                                          | TODO (T10) |
+| Seed demo user    | `pnpm --filter api seed`                                               | done       |
+| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                        | TODO (T10) |
 
 ## Working rules
 
@@ -61,6 +62,7 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
   3. The task is checked off in `docs/ROADMAP.md` (`[ ]` to `[x]`).
   4. A conventional commit is made: `feat(Txx): <short description>` (use `fix`, `docs`, `chore`, `test` where they fit better).
 - Automated tests never call the real Anthropic API; stub `fetch`.
+- Database integration tests run the real migrations in a throwaway schema and need `DATABASE_URL` (from `.env`) plus a running Postgres (`docker compose up -d postgres`); they are skipped when it is unset.
 - Every LLM call, including failures, is recorded in `llm_calls`.
 
 ## Secrets and private files

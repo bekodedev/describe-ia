@@ -32,7 +32,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | ID  | Title                                                           | Depends on    | Est. (h) | Status |
 | --- | --------------------------------------------------------------- | ------------- | -------- | ------ |
 | T01 | Monorepo bootstrap, TypeScript tooling and Docker Compose       | —             | 3        | [x]    |
-| T02 | Database schema, migrations and demo user                       | T01           | 3        | [ ]    |
+| T02 | Database schema, migrations and demo user                       | T01           | 3        | [x]    |
 | T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [ ]    |
 | T04 | Naive prompt v1 and generation service                          | T03           | 3        | [ ]    |
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [ ]    |
@@ -89,30 +89,31 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T02 — Database schema, migrations and demo user
 
-**Goal.** Define the PostgreSQL schema with plain SQL migrations and a demo user injected by a middleware, so every row already carries a `user_id`.
+**Goal.** Define the PostgreSQL schema with plain SQL migrations and a demo user injected by a middleware, so every row already carries a `user_id`, and record every LLM call from day one so costs can be measured.
 
 **Deliverables.**
 
 - `node-pg-migrate` configured with SQL migrations in `apps/api/migrations/`.
-- Tables:
-  - `users` (id uuid PK, email, name, created_at).
-  - `products` (id, user_id FK, title, category, image_path nullable, created_at).
-  - `descriptions` (id, product_id FK, user_id FK, variant in `short|medium|seo`, original_text, edited_text nullable, created_at, updated_at; unique on product_id + variant).
-  - `llm_calls` (id, user_id FK, product_id FK nullable, purpose, model, prompt_version, attempt, input_tokens, output_tokens, cost_usd nullable, latency_ms, status in `ok|http_error|timeout|invalid_format`, error_message nullable, created_at).
-- A seed migration (or idempotent startup step) that creates the fixed demo user with a constant UUID.
-- `pg` pool module (`db/pool.ts`) and a `demoUser` middleware that sets `req.user` from that constant.
-- Migrations run automatically when the `api` container starts.
-- Scripts: `migrate:up`, `migrate:down`, `migrate:create`.
+- Tables (uuid PKs, `created_at timestamptz` on all):
+  - `users` (id, email unique, name).
+  - `products` (id, user_id FK, title, category, image_path nullable).
+  - `descriptions` (id, product_id FK, variant enum `short|medium|seo`, content, edited_content nullable, updated_at).
+  - `llm_calls` (id, user_id FK, product_id FK nullable, model, prompt_version, input_tokens, output_tokens, cost_usd numeric(10,6) nullable, latency_ms, status enum `ok|invalid_output|error`, error_message nullable, raw_response jsonb nullable).
+- Indexes on the foreign keys and on `products(user_id, created_at desc)`.
+- Idempotent seed (`pnpm --filter api seed`) for the demo user (`demo@describeia.local`) with the fixed UUID `DEMO_USER_ID` in `src/config/demo-user.ts`.
+- `pg` pool module, a `demoUser` middleware that sets `req.user` (placeholder for real auth) and a minimal plain-SQL repository layer in `apps/api/src/db/`.
+- Migrations and the seed run automatically when the `api` container starts.
+- Scripts: `migrate` (up), `migrate:down`, `migrate:create`, `seed`.
 
 **Acceptance criteria.**
 
-- From an empty database, `docker compose up -d` results in all four tables (`docker compose exec postgres psql -U postgres -d describeia -c "\dt"`).
-- `pnpm --filter api migrate:down` followed by `migrate:up` works with no error (reversible).
-- `SELECT count(*) FROM users` returns 1; running migrations twice keeps it at 1.
-- An integration test proves a request through the app has `req.user.id` equal to the demo user.
-- Inserting a description with an invalid variant fails on the database constraint.
+- `docker compose down -v && docker compose up -d` leaves all four tables created and the demo user seeded (`docker compose exec postgres psql -U postgres -d describeia -c "dt"`).
+- Running the seed twice keeps `SELECT count(*) FROM users` at 1.
+- `pnpm --filter api migrate:down` followed by `migrate` works with no error (reversible).
+- An integration test against Postgres (throwaway schema) creates a product, inserts 3 descriptions and reads them back; an unknown variant is rejected by the database.
+- A test proves the middleware sets `req.user.id` to the demo user.
 
-**Out of scope.** Repositories for each table (added with the feature that needs them), real auth, indexes beyond primary keys, foreign keys and the history lookup (`products(user_id, created_at desc)`).
+**Out of scope.** HTTP endpoints (T06), LLM logic, real auth.
 
 ---
 
@@ -132,9 +133,9 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 **Acceptance criteria.**
 
-- `pnpm test` includes tests that, with a stubbed `fetch`, prove: success is logged with tokens; 429 then 200 succeeds after one retry; a 400 is not retried; a hung request ends with status `timeout`; each attempt has its own `llm_calls` row.
+- `pnpm test` includes tests that, with a stubbed `fetch`, prove: success is logged with tokens; 429 then 200 succeeds after one retry; a 400 is not retried; a hung request ends with status `error` and a timeout message; each attempt has its own `llm_calls` row.
 - `pnpm --filter api llm:smoke` (real key) prints a reply and non-zero token counts, and a matching row appears in `llm_calls`.
-- With an invalid key the smoke script exits non-zero and a `http_error` row is stored, with no key in the log output.
+- With an invalid key the smoke script exits non-zero and an `error` row is stored, with no key in the log output.
 
 **Out of scope.** Prompts, structured output, format validation, cost computation, streaming, other providers.
 
@@ -172,13 +173,13 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - `description.v2.md` prompt (public) asking for the 3 variants, with length guidance per variant.
 - Structured output through a forced tool call (`tools` + `tool_choice`) on the Messages API, still with plain `fetch`.
 - zod schema `GenerationResult`: `short`, `medium`, `seo` as non-empty strings with sensible max lengths.
-- Retry on invalid format: up to `LLM_MAX_FORMAT_RETRIES` (default 2), each attempt logged as its own `llm_calls` row with status `invalid_format` and the validation error summary; on the retry the error is fed back to the model.
+- Retry on invalid format: up to `LLM_MAX_FORMAT_RETRIES` (default 2), each attempt logged as its own `llm_calls` row with status `invalid_output` and the validation error summary; on the retry the error is fed back to the model.
 - A typed error (`InvalidModelOutputError`) after retries are exhausted.
 - Service returns a validated object instead of raw text.
 
 **Acceptance criteria.**
 
-- Tests with stubbed responses: valid → passes; missing field → retried and succeeds; three consecutive bad answers → `InvalidModelOutputError` and 3 `invalid_format` rows; extra fields are stripped.
+- Tests with stubbed responses: valid → passes; missing field → retried and succeeds; three consecutive bad answers → `InvalidModelOutputError` and 3 `invalid_output` rows; extra fields are stripped.
 - `pnpm --filter api generate:demo "Stainless steel water bottle 750 ml" "Sports"` prints three distinct variants, validated.
 - Running it 10 times against the real API yields 10 valid results (note the number of retries needed in the devlog).
 

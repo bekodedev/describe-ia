@@ -8,10 +8,15 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "dev:poll": "nodemon --legacy-watch --watch src --ext ts --exec \"tsx --env-file-if-exists=../../.env src/server.ts\""
+    "dev:poll": "nodemon --legacy-watch --watch src --ext ts --exec \"tsx --env-file-if-exists=../../.env src/server.ts\"",
+    "migrate": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations",
+    "migrate:down": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m migrations",
+    "migrate:create": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create -m migrations --migration-file-language sql",
+    "seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
+    "node-pg-migrate": "^9.0.0",
     "pg": "^8.23.0",
     "zod": "^4.6.5"
   },

@@ -7,4 +7,4 @@ COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile --filter api...
 COPY apps/api apps/api
 WORKDIR /repo/apps/api
-CMD ["pnpm", "dev:poll"]
+CMD ["sh", "-c", "pnpm migrate && pnpm seed && pnpm dev:poll"]

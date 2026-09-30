@@ -26,6 +26,7 @@ services:
       - '${PORT:-4000}:${PORT:-4000}'
     volumes:
       - ./apps/api/src:/repo/apps/api/src
+      - ./apps/api/migrations:/repo/apps/api/migrations
     depends_on:
       postgres:
         condition: service_healthy
