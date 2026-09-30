@@ -1,0 +1,21 @@
+# Local working notes
+.internal/
+docs/internal/
+
+# Private prompts (the loader falls back to apps/api/prompts/public/)
+apps/api/prompts/private/
+*.private.*
+
+# Secrets and local config
+.env
+
+# User uploads
+uploads/
+
+# Dependencies and build output
+node_modules/
+dist/
+.next/
+coverage/
+*.log
+.DS_Store
