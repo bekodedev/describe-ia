@@ -32,6 +32,15 @@ export interface LlmCall {
   created_at: Date;
 }
 
+// The call is recorded before the product exists, so the link is made afterwards.
+export async function linkLlmCallToProduct(
+  db: Db,
+  callId: string,
+  productId: string,
+): Promise<void> {
+  await db.query('UPDATE llm_calls SET product_id = $2 WHERE id = $1', [callId, productId]);
+}
+
 export async function insertLlmCall(db: Db, call: NewLlmCall): Promise<LlmCall> {
   const { rows } = await db.query<LlmCall>(
     `INSERT INTO llm_calls (user_id, product_id, model, prompt_version, input_tokens,

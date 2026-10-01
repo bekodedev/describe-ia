@@ -24,9 +24,8 @@ apps/
       db/            pool and plain-SQL repositories
       config/        env parsing (zod)
     migrations/      SQL migrations
-    prompts/
-      public/        versioned prompts, always committed
-      private/       optional local prompts (git-ignored)
+    prompts/         versioned prompts, always committed (<name>.<version>.md)
+      private/       optional local overrides with the same file names (git-ignored)
   web/
     src/             Next.js app, API client in src/lib/api.ts
 docs/                PROJECT.md, ROADMAP.md, DEMO.md
@@ -37,20 +36,21 @@ docs/                PROJECT.md, ROADMAP.md, DEMO.md
 
 Commands marked TODO do not exist yet; the task that creates them replaces TODO with the real command.
 
-| Purpose           | Command                                                                | Status     |
-| ----------------- | ---------------------------------------------------------------------- | ---------- |
-| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                | done       |
-| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev` | done       |
-| Test              | `pnpm test`                                                            | done       |
-| Build             | `pnpm build`                                                           | done       |
-| Lint              | `pnpm lint`                                                            | done       |
-| Typecheck         | `pnpm typecheck`                                                       | done       |
-| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                           | done       |
-| New migration     | `pnpm --filter api migrate:create <name>`                              | done       |
-| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)         | done       |
-| Cost report       | `pnpm --filter api report:cost`                                        | TODO (T09) |
-| Seed demo user    | `pnpm --filter api seed`                                               | done       |
-| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                        | TODO (T10) |
+| Purpose           | Command                                                                     | Status     |
+| ----------------- | --------------------------------------------------------------------------- | ---------- |
+| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                     | done       |
+| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`      | done       |
+| Test              | `pnpm test`                                                                 | done       |
+| Build             | `pnpm build`                                                                | done       |
+| Lint              | `pnpm lint`                                                                 | done       |
+| Typecheck         | `pnpm typecheck`                                                            | done       |
+| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                                | done       |
+| New migration     | `pnpm --filter api migrate:create <name>`                                   | done       |
+| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)              | done       |
+| Cost report       | `pnpm --filter api report:cost`                                             | TODO (T09) |
+| Try a generation  | `pnpm --filter api gen:try "<title>" "<category>"` (real call, needs a key) | done       |
+| Seed demo user    | `pnpm --filter api seed`                                                    | done       |
+| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                             | TODO (T10) |
 
 ## Working rules
 
@@ -69,7 +69,7 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 
 - Never commit secrets. `.env.example` must always list every variable the code reads, with safe placeholder values, and must be updated in the same change that adds a variable.
 - Never commit anything under `.internal/`, `docs/internal/`, `apps/api/prompts/private/`, or files matching `*.private.*`. Check `git status` before every commit.
-- Code must work when private files are missing: the prompt loader falls back to `apps/api/prompts/public/`.
+- Code must work when private files are missing: the prompt loader falls back to the public prompt in `apps/api/prompts/`.
 
 ## Public-facing repository
 

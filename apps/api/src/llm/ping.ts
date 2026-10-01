@@ -10,7 +10,7 @@ const env = loadEnv();
 const pool = createPool(env.DATABASE_URL);
 
 try {
-  const response = await recordLlmCall(
+  const { response } = await recordLlmCall(
     pool,
     { userId: DEMO_USER_ID, promptVersion: 'ping', model: env.LLM_MODEL },
     () =>
@@ -18,6 +18,7 @@ try {
         messages: [{ role: 'user', content: 'Reply with the single word: pong' }],
         maxTokens: 20,
       }),
+    textOf,
   );
   const cost = estimateCostUsd(response.model, response.usage);
   console.log(`reply:   ${textOf(response).trim()}`);

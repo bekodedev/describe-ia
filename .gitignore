@@ -2,7 +2,7 @@
 .internal/
 docs/internal/
 
-# Private prompts (the loader falls back to apps/api/prompts/public/)
+# Private prompts (the loader falls back to the public file in apps/api/prompts/)
 apps/api/prompts/private/
 *.private.*
 

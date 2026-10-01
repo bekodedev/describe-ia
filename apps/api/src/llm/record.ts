@@ -11,11 +11,14 @@ export interface CallContext {
 }
 
 // Runs one LLM call and stores a llm_calls row either way, so failures show up in the cost data.
-export async function recordLlmCall(
+// `interpret` turns the response into the value the caller needs; if it throws, the call is
+// stored as 'invalid_output' (the tokens were spent) and the error is rethrown.
+export async function recordLlmCall<T>(
   db: Db,
   context: CallContext,
   call: () => Promise<LlmResponse>,
-): Promise<LlmResponse> {
+  interpret: (response: LlmResponse) => T,
+): Promise<{ response: LlmResponse; value: T; callId: string }> {
   const startedAt = Date.now();
   const base = {
     userId: context.userId,
@@ -23,19 +26,9 @@ export async function recordLlmCall(
     promptVersion: context.promptVersion,
   };
 
+  let response: LlmResponse;
   try {
-    const response = await call();
-    await insertLlmCall(db, {
-      ...base,
-      model: response.model,
-      inputTokens: response.usage.inputTokens,
-      outputTokens: response.usage.outputTokens,
-      costUsd: estimateCostUsd(response.model, response.usage),
-      latencyMs: response.latencyMs,
-      status: 'ok',
-      rawResponse: response.raw,
-    });
-    return response;
+    response = await call();
   } catch (error) {
     await insertLlmCall(db, {
       ...base,
@@ -46,4 +39,26 @@ export async function recordLlmCall(
     });
     throw error;
   }
+
+  let value: T | undefined;
+  let invalid: Error | undefined;
+  try {
+    value = interpret(response);
+  } catch (error) {
+    invalid = error as Error;
+  }
+
+  const row = await insertLlmCall(db, {
+    ...base,
+    model: response.model,
+    inputTokens: response.usage.inputTokens,
+    outputTokens: response.usage.outputTokens,
+    costUsd: estimateCostUsd(response.model, response.usage),
+    latencyMs: response.latencyMs,
+    status: invalid ? 'invalid_output' : 'ok',
+    errorMessage: invalid?.message,
+    rawResponse: response.raw,
+  });
+  if (invalid) throw invalid;
+  return { response, value: value as T, callId: row.id };
 }

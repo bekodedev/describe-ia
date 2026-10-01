@@ -34,7 +34,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T01 | Monorepo bootstrap, TypeScript tooling and Docker Compose       | —             | 3        | [x]    |
 | T02 | Database schema, migrations and demo user                       | T01           | 3        | [x]    |
 | T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [x]    |
-| T04 | Naive prompt v1 and generation service                          | T03           | 3        | [ ]    |
+| T04 | Naive prompt v1 and generation service                          | T03           | 3        | [x]    |
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [ ]    |
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [ ]    |
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [ ]    |
@@ -128,7 +128,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Timeout per attempt through `AbortController`. Retries only for 429, 529 and 5xx, with exponential backoff plus jitter, honouring `retry-after`; at most 3 attempts. Other 4xx, timeouts and network failures are not retried.
 - Typed errors in `src/llm/errors.ts`: `LlmRateLimitError`, `LlmTimeoutError`, `LlmBadRequestError`, `LlmUpstreamError`.
 - `src/llm/pricing.ts`: per-model price table (USD per million tokens, with source URL and date) and `estimateCostUsd(model, usage)`; unknown model → `null`.
-- `src/llm/record.ts`: `recordLlmCall(db, context, call)` runs a call and inserts one `llm_calls` row on success (tokens, cost, latency, raw response) and on error (message, status `error`), then rethrows.
+- `src/llm/record.ts`: `recordLlmCall(db, context, call, interpret)` runs a call and inserts one `llm_calls` row on success (tokens, cost, latency, raw response) and on error (message, status `error`), then rethrows.
 - `pnpm --filter api llm:ping`: one minimal real call; prints reply, tokens, cost and latency.
 
 **Acceptance criteria.**
@@ -143,24 +143,23 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T04 — Naive prompt v1 and generation service
 
-**Goal.** Get a first end-to-end generation working with a deliberately simple prompt and no structured output, and put in place the versioned prompt loader with private/public fallback.
+**Goal.** Get a first end-to-end generation working with a deliberately simple prompt and no structured output, put in place the versioned prompt loader with private/public fallback, and document how it fails.
 
 **Deliverables.**
 
-- `apps/api/prompts/public/description.v1.md` with `{{title}}`, `{{category}}` and `{{language}}` variables (language comes from `OUTPUT_LANGUAGE`, never hard-coded).
-- Prompt loader: looks first in `apps/api/prompts/private/<name>`, falls back to `apps/api/prompts/public/<name>`, logs which one was used (name only) and reports the prompt version; unit-tested.
-- `apps/api/src/services/generation.ts`: builds the prompt, calls the LLM client, returns the raw text.
-- A dev script `pnpm --filter api generate:demo "Title" "Category"` that prints the raw output.
-- Nothing is committed under `apps/api/prompts/private/`; the loader must work when the folder does not exist.
+- `apps/api/prompts/generate-description.v1.md` (public) with `{{title}}`, `{{category}}` and `{{language}}` placeholders; the language name ("Spanish") is derived from `OUTPUT_LANGUAGE`, never hard-coded. The prompt asks for three variants under the headings `SHORT:`, `MEDIUM:` and `SEO:`.
+- `apps/api/src/generation/prompts.ts`: `loadPrompt(name, version)` looks first in `apps/api/prompts/private/<name>.<version>.md` (git-ignored) and falls back to `apps/api/prompts/<name>.<version>.md`; `renderPrompt` rejects unknown placeholders. Unit-tested.
+- `apps/api/src/generation/service.ts`: `generateDescriptions(pool, { userId, title, category })` calls the T03 client, parses the headings with a deliberately naive parser, saves the product, the 3 descriptions and the `llm_call` (`prompt_version = v1`, linked to the product) and returns them. If parsing fails, the call is stored with status `invalid_output` and an error is thrown; nothing else is saved.
+- `pnpm --filter api gen:try "<title>" "<category>"` prints the raw response and the parsed result.
+- `docs/experiments/t04-v1-outputs.md`: at least 10 varied runs with their raw outputs and a table of observed failures with their frequency.
 
 **Acceptance criteria.**
 
-- Loader tests: private file present → private used; absent → public used; variables replaced; unknown variable placeholders raise an error.
-- `pnpm --filter api generate:demo "Stainless steel water bottle 750 ml" "Sports"` prints text in the language set in `OUTPUT_LANGUAGE`; changing it to `en` changes the output language with no code change.
-- An `llm_calls` row with `prompt_version = description.v1` exists after the run.
-- The output is knowingly unstructured (3 variants are not reliably separable); this is documented in a short comment and in the devlog.
+- `gen:try` works end to end and persists product, descriptions and the `llm_calls` row.
+- Tests: loader (private wins, public fallback, missing private folder, unknown placeholder), parser, and the service against Postgres with a stubbed model (success saves everything; a bad format stores `invalid_output` and no product).
+- The experiments file contains the runs and the failure table.
 
-**Out of scope.** JSON/tool output, validation, persistence of products and descriptions, HTTP endpoints.
+**Out of scope.** Fixing the problems (T05): no validation, no format retries, no structured output, no HTTP endpoints.
 
 ---
 
@@ -170,7 +169,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 **Deliverables.**
 
-- `description.v2.md` prompt (public) asking for the 3 variants, with length guidance per variant.
+- `generate-description.v2.md` prompt (public) asking for the 3 variants, with length guidance per variant.
 - Structured output through a forced tool call (`tools` + `tool_choice`) on the Messages API, still with plain `fetch`.
 - zod schema `GenerationResult`: `short`, `medium`, `seo` as non-empty strings with sensible max lengths.
 - Retry on invalid format: up to `LLM_MAX_FORMAT_RETRIES` (default 2), each attempt logged as its own `llm_calls` row with status `invalid_output` and the validation error summary; on the retry the error is fed back to the model.
@@ -180,7 +179,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 **Acceptance criteria.**
 
 - Tests with stubbed responses: valid → passes; missing field → retried and succeeds; three consecutive bad answers → `InvalidModelOutputError` and 3 `invalid_output` rows; extra fields are stripped.
-- `pnpm --filter api generate:demo "Stainless steel water bottle 750 ml" "Sports"` prints three distinct variants, validated.
+- `pnpm --filter api gen:try "Stainless steel water bottle 750 ml" "Sports"` prints three distinct variants, validated.
 - Running it 10 times against the real API yields 10 valid results (note the number of retries needed in the devlog).
 
 **Out of scope.** HTTP endpoints, persistence of products/descriptions, images.
@@ -224,7 +223,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - Validation: allowed types `image/jpeg`, `image/png`, `image/webp` checked by content (magic bytes), not only by header; max size configurable (`MAX_IMAGE_BYTES`, default 5 MB); one file only.
 - Files stored under `uploads/` with a generated file name (never the client's name); path saved in `products.image_path`; `uploads` is a Docker volume.
 - LLM client supports an image content block (base64) in the request.
-- Prompt `description.v3.md` (public) with a rule to describe only what is visible and never invent attributes; falls back to the text-only behaviour when there is no image.
+- Prompt `generate-description.v3.md` (public) with a rule to describe only what is visible and never invent attributes; falls back to the text-only behaviour when there is no image.
 - `GET /api/products/:id/image` serves the stored photo.
 - `.env.example` updated with `MAX_IMAGE_BYTES` and `UPLOADS_DIR`.
 

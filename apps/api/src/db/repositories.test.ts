@@ -1,42 +1,24 @@
-import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { runner } from 'node-pg-migrate';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_USER_ID } from '../config/demo-user.js';
 import { insertDescription, listDescriptions, updateEditedContent } from './descriptions.js';
 import { insertLlmCall } from './llm-calls.js';
 import { createProduct, findProduct, listProducts } from './products.js';
+import { createTestSchema } from './test-schema.js';
 import { seedDemoUser } from './users.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 
-// Runs the real migrations in a throwaway schema, so the dev data is untouched.
 describe.skipIf(!databaseUrl)('repositories (Postgres)', () => {
-  const schema = `test_${randomUUID().replaceAll('-', '')}`;
   let pool: pg.Pool;
+  let drop: () => Promise<void>;
 
   beforeAll(async () => {
-    await runner({
-      databaseUrl: databaseUrl!,
-      dir: fileURLToPath(new URL('../../migrations', import.meta.url)),
-      direction: 'up',
-      migrationsTable: 'pgmigrations',
-      schema,
-      createSchema: true,
-      log: () => {},
-    });
-    pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
+    ({ pool, drop } = await createTestSchema(databaseUrl!));
     await seedDemoUser(pool);
   });
 
-  afterAll(async () => {
-    await pool.end();
-    const admin = new pg.Client({ connectionString: databaseUrl });
-    await admin.connect();
-    await admin.query(`DROP SCHEMA ${schema} CASCADE`);
-    await admin.end();
-  });
+  afterAll(() => drop());
 
   it('seeding twice keeps a single demo user', async () => {
     await seedDemoUser(pool);

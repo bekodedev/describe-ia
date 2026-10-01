@@ -8,7 +8,7 @@ const context = { userId: 'u1', promptVersion: 'v1', model: 'claude-haiku-4-5-20
 
 // A fake Db that captures the INSERT parameters: no Postgres needed for this unit test.
 function fakeDb() {
-  const query = vi.fn(async () => ({ rows: [{}] }));
+  const query = vi.fn(async () => ({ rows: [{ id: 'call-1' }] }));
   return { db: { query } as unknown as Db, query };
 }
 const insertedValues = (query: ReturnType<typeof fakeDb>['query']) =>
@@ -25,7 +25,13 @@ describe('recordLlmCall', () => {
       raw: { id: 'msg_1' },
     };
 
-    expect(await recordLlmCall(db, context, async () => response)).toBe(response);
+    const result = await recordLlmCall(
+      db,
+      context,
+      async () => response,
+      (r) => r.usage.inputTokens,
+    );
+    expect(result).toEqual({ response, value: 1000, callId: 'call-1' });
 
     // [user_id, product_id, model, prompt_version, input, output, cost, latency, status, error, raw]
     expect(insertedValues(query)).toEqual([
@@ -48,14 +54,47 @@ describe('recordLlmCall', () => {
     const failure = new LlmRateLimitError('Anthropic API 429: slow down', 429);
 
     await expect(
-      recordLlmCall(db, context, async () => {
-        throw failure;
-      }),
+      recordLlmCall(
+        db,
+        context,
+        async () => {
+          throw failure;
+        },
+        (r) => r,
+      ),
     ).rejects.toBe(failure);
 
     const values = insertedValues(query);
     expect(values[8]).toBe('error');
     expect(values[9]).toBe('Anthropic API 429: slow down');
     expect(values[2]).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('stores invalid_output with the tokens when interpreting the response fails', async () => {
+    const { db, query } = fakeDb();
+    const response: LlmResponse = {
+      content: [{ type: 'text', text: 'nonsense' }],
+      usage: { inputTokens: 1000, outputTokens: 500 },
+      model: 'claude-haiku-4-5-20251001',
+      latencyMs: 50,
+      raw: {},
+    };
+    const bad = new Error('no headings');
+
+    await expect(
+      recordLlmCall(
+        db,
+        context,
+        async () => response,
+        () => {
+          throw bad;
+        },
+      ),
+    ).rejects.toBe(bad);
+
+    const values = insertedValues(query);
+    expect(values[8]).toBe('invalid_output');
+    expect(values[9]).toBe('no headings');
+    expect(values.slice(4, 7)).toEqual([1000, 500, 0.0035]);
   });
 });

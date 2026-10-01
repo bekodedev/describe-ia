@@ -1,0 +1,88 @@
+import type pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { DEMO_USER_ID } from '../config/demo-user.js';
+import { createTestSchema } from '../db/test-schema.js';
+import { seedDemoUser } from '../db/users.js';
+import type { LlmResponse } from '../llm/client.js';
+import { InvalidOutputError } from './parse.js';
+import { generateDescriptions, type GenerationDeps } from './service.js';
+
+const databaseUrl = process.env.DATABASE_URL;
+
+const answer = (text: string): LlmResponse => ({
+  content: [{ type: 'text', text }],
+  usage: { inputTokens: 100, outputTokens: 80 },
+  model: 'claude-haiku-4-5-20251001',
+  latencyMs: 10,
+  raw: { stub: true },
+});
+
+const depsReturning = (text: string, prompts: string[] = []): GenerationDeps => ({
+  complete: async (params) => {
+    prompts.push(String(params.messages[0]?.content));
+    return answer(text);
+  },
+  model: 'claude-haiku-4-5-20251001',
+  language: 'es',
+});
+
+describe.skipIf(!databaseUrl)('generateDescriptions (Postgres, stubbed LLM)', () => {
+  let pool: pg.Pool;
+  let drop: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ pool, drop } = await createTestSchema(databaseUrl!));
+    await seedDemoUser(pool);
+  });
+  afterAll(() => drop());
+
+  const count = async (table: string) =>
+    (await pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n as number;
+
+  it('saves the product, 3 descriptions and a linked ok llm_call; asks for the configured language', async () => {
+    const prompts: string[] = [];
+    const text = 'SHORT: Short one.\nMEDIUM: Medium one.\nSEO: Seo one.';
+    const result = await generateDescriptions(
+      pool,
+      { userId: DEMO_USER_ID, title: 'Steel bottle', category: 'Sports' },
+      depsReturning(text, prompts),
+    );
+
+    expect(result.descriptions.map((d) => [d.variant, d.content])).toEqual([
+      ['short', 'Short one.'],
+      ['medium', 'Medium one.'],
+      ['seo', 'Seo one.'],
+    ]);
+    expect(prompts[0]).toContain('in Spanish');
+    expect(prompts[0]).toContain('Product: Steel bottle');
+
+    const { rows } = await pool.query('SELECT * FROM llm_calls WHERE product_id = $1', [
+      result.product.id,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'ok', prompt_version: 'v1', input_tokens: 100 });
+  });
+
+  it('stores an invalid_output llm_call, throws, and saves no product when the headings are missing', async () => {
+    const products = await count('products');
+    const failures = await count('llm_calls');
+
+    await expect(
+      generateDescriptions(
+        pool,
+        { userId: DEMO_USER_ID, title: 'Mug', category: 'Home' },
+        depsReturning('CORTA: ...\nMEDIA: ...\nSEO: ...'),
+      ),
+    ).rejects.toThrow(InvalidOutputError);
+
+    expect(await count('products')).toBe(products);
+    const { rows } = await pool.query('SELECT * FROM llm_calls ORDER BY created_at DESC LIMIT 1');
+    expect(await count('llm_calls')).toBe(failures + 1);
+    expect(rows[0]).toMatchObject({
+      status: 'invalid_output',
+      input_tokens: 100,
+      product_id: null,
+    });
+    expect(rows[0].error_message).toMatch(/headings/);
+  });
+});

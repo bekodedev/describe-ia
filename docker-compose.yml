@@ -27,6 +27,7 @@ services:
     volumes:
       - ./apps/api/src:/repo/apps/api/src
       - ./apps/api/migrations:/repo/apps/api/migrations
+      - ./apps/api/prompts:/repo/apps/api/prompts
     depends_on:
       postgres:
         condition: service_healthy
