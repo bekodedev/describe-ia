@@ -33,7 +33,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | --- | --------------------------------------------------------------- | ------------- | -------- | ------ |
 | T01 | Monorepo bootstrap, TypeScript tooling and Docker Compose       | —             | 3        | [x]    |
 | T02 | Database schema, migrations and demo user                       | T01           | 3        | [x]    |
-| T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [ ]    |
+| T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [x]    |
 | T04 | Naive prompt v1 and generation service                          | T03           | 3        | [ ]    |
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [ ]    |
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [ ]    |
@@ -52,7 +52,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 1. **Docker Compose must serve the whole stack, not only Postgres.** The Definition of Done requires `docker compose up` from a clean clone. T01 therefore creates `postgres`, `api` and `web` services (the last two with a "hello world" body), and each later task extends them (T02 runs migrations on API start, T07 adds the uploads volume). Otherwise the full-stack setup would land untested in T11.
 2. **The prompt loader with public fallback belongs in T04, not T11.** The private/public split affects how every prompt file is read. Building the loader when the first prompt is written avoids reworking T04 and T05 later. T11 only audits and documents the split.
 3. **Tests are written per task, not only in T10.** The per-task finish rule requires tests to pass, so each task ships its own unit/integration tests. T10 adds the cross-cutting layer: end-to-end flow, demo data and the walkthrough.
-4. **Cost is computed in T09, but the columns exist from T02.** `llm_calls` has `input_tokens`, `output_tokens` and a nullable `cost_usd` from the start; T03 fills tokens and latency, T09 adds the pricing table and fills `cost_usd`.
+4. **Cost is stored from T03; T09 reports it.** `llm_calls` has `input_tokens`, `output_tokens` and a nullable `cost_usd` from T02; T03 adds the per-model price table (`src/llm/pricing.ts`) and fills tokens, latency and `cost_usd` on every call. T09 only aggregates and presents it.
 
 ## Conventions used in the acceptance criteria
 
@@ -117,27 +117,27 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ---
 
-## T03 — HTTP LLM client: config, timeouts, retries and token-usage logging
+## T03 — HTTP LLM client: config, timeouts, retries, token usage and cost
 
-**Goal.** Provide one isolated function that calls the Anthropic Messages API with `fetch`, handles transport failures, and records every call in `llm_calls`.
+**Goal.** Provide one small, readable client for the Anthropic Messages API (plain `fetch`, no SDK) that handles transport failures and records every call, with its cost, in `llm_calls`.
 
 **Deliverables.**
 
-- `apps/api/src/llm/client.ts` exposing a single function (for example `callModel(request): Promise<ModelResponse>`); no other file talks to the provider.
-- Env vars: `ANTHROPIC_API_KEY`, `LLM_MODEL` (required, no hard-coded model in code), `ANTHROPIC_BASE_URL` (default official URL), `LLM_TIMEOUT_MS`, `LLM_MAX_RETRIES`. `.env.example` defaults `LLM_MODEL` to the cheaper development model `claude-haiku-4-5-20251001` and documents `claude-sonnet-5-5` as the suggested production value; switching is only an `.env` change.
-- Timeout through `AbortController`.
-- Retries with exponential backoff and jitter on network errors, timeouts, HTTP 429 and 5xx; honour `retry-after`; no retry on other 4xx.
-- After each call (success or failure) an `llm_calls` row is written with model, tokens, latency and status; the API key is never logged.
-- `fetch` is injected so tests can stub it.
-- A `pnpm --filter api llm:smoke` script that sends one tiny prompt to the real API and prints the reply and token usage.
+- `apps/api/src/llm/client.ts` exposing `complete(params)`: `system`, `messages` (text and base64 image blocks), `maxTokens` and optional `tools` / `toolChoice` in; `{ content, usage: { inputTokens, outputTokens }, model, latencyMs, raw }` out. Response is validated with zod. `fetch` and `sleep` are injectable so tests never touch the network.
+- Env: `ANTHROPIC_API_KEY`, `LLM_MODEL` (never hard-coded; `.env.example` defaults to `claude-haiku-4-5-20251001`, `claude-sonnet-5-5` suggested for production) and `LLM_TIMEOUT_MS` (default 30000).
+- Timeout per attempt through `AbortController`. Retries only for 429, 529 and 5xx, with exponential backoff plus jitter, honouring `retry-after`; at most 3 attempts. Other 4xx, timeouts and network failures are not retried.
+- Typed errors in `src/llm/errors.ts`: `LlmRateLimitError`, `LlmTimeoutError`, `LlmBadRequestError`, `LlmUpstreamError`.
+- `src/llm/pricing.ts`: per-model price table (USD per million tokens, with source URL and date) and `estimateCostUsd(model, usage)`; unknown model → `null`.
+- `src/llm/record.ts`: `recordLlmCall(db, context, call)` runs a call and inserts one `llm_calls` row on success (tokens, cost, latency, raw response) and on error (message, status `error`), then rethrows.
+- `pnpm --filter api llm:ping`: one minimal real call; prints reply, tokens, cost and latency.
 
 **Acceptance criteria.**
 
-- `pnpm test` includes tests that, with a stubbed `fetch`, prove: success is logged with tokens; 429 then 200 succeeds after one retry; a 400 is not retried; a hung request ends with status `error` and a timeout message; each attempt has its own `llm_calls` row.
-- `pnpm --filter api llm:smoke` (real key) prints a reply and non-zero token counts, and a matching row appears in `llm_calls`.
-- With an invalid key the smoke script exits non-zero and an `error` row is stored, with no key in the log output.
+- `pnpm test` (stubbed `fetch`) proves: a 429 with `retry-after` is retried after that delay; a 400 is not retried; a hung request throws `LlmTimeoutError`; 429/529 stop after 3 attempts; the cost is computed correctly; success and error rows are inserted.
+- `pnpm --filter api llm:ping` with a real key prints a reply, non-zero tokens and a cost above 0, and a matching `ok` row appears in `llm_calls`.
+- With an invalid key the script exits non-zero, an `error` row is stored, and the key is not in any output.
 
-**Out of scope.** Prompts, structured output, format validation, cost computation, streaming, other providers.
+**Out of scope.** Product prompts (T04), structured output (T05), cost report (T09), streaming, prompt caching, other providers.
 
 ---
 
@@ -271,8 +271,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 **Deliverables.**
 
-- Pricing table in a versioned config file (`apps/api/config/pricing.json`) keyed by model id (must include both the development and the production model) with input and output prices per million tokens, plus a note on the date the prices were checked; unknown model → `cost_usd` stays null and a warning is logged.
-- Cost computed and stored in `llm_calls.cost_usd` at write time (from tokens × prices).
+- Re-check `src/llm/pricing.ts` against the official pricing page (prices and date) and make sure it covers both the development and the production model. The cost itself is already stored in `llm_calls.cost_usd` by T03; an unknown model keeps `cost_usd` null.
 - `GET /api/reports/cost` returning: total calls, successful and failed calls, total cost, cost per successful generation, cost per description (3 per generation), projected cost per 1,000 descriptions, average latency, and the cost wasted on failed/invalid calls.
 - A `/costs` page in the web app showing those figures, linked from the header.
 - `pnpm --filter api report:cost` prints the same report in the terminal.

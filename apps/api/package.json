@@ -12,7 +12,8 @@
     "migrate": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations",
     "migrate:down": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m migrations",
     "migrate:create": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create -m migrations --migration-file-language sql",
-    "seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts"
+    "seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
+    "llm:ping": "tsx --use-system-ca --env-file-if-exists=../../.env src/llm/ping.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

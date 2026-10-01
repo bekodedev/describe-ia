@@ -12,6 +12,7 @@ describe('loadEnv', () => {
     const env = loadEnv(valid);
     expect(env.OUTPUT_LANGUAGE).toBe('es');
     expect(env.PORT).toBe(4000);
+    expect(env.LLM_TIMEOUT_MS).toBe(30_000);
   });
 
   it('names the missing variable', () => {

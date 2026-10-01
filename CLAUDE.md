@@ -20,14 +20,13 @@ apps/
     src/
       routes/        HTTP handlers: validate, call a service, shape the response
       services/      business logic
-      llm/           the only code that talks to the provider
+      llm/           the only code that talks to the provider (client, pricing, errors, recording)
       db/            pool and plain-SQL repositories
       config/        env parsing (zod)
     migrations/      SQL migrations
     prompts/
       public/        versioned prompts, always committed
       private/       optional local prompts (git-ignored)
-    config/          pricing.json
   web/
     src/             Next.js app, API client in src/lib/api.ts
 docs/                PROJECT.md, ROADMAP.md, DEMO.md
@@ -48,7 +47,7 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 | Typecheck         | `pnpm typecheck`                                                       | done       |
 | Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                           | done       |
 | New migration     | `pnpm --filter api migrate:create <name>`                              | done       |
-| LLM smoke test    | `pnpm --filter api llm:smoke`                                          | TODO (T03) |
+| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)         | done       |
 | Cost report       | `pnpm --filter api report:cost`                                        | TODO (T09) |
 | Seed demo user    | `pnpm --filter api seed`                                               | done       |
 | Seed demo data    | `pnpm --filter api seed:demo` (sample products)                        | TODO (T10) |
@@ -63,7 +62,8 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
   4. A conventional commit is made: `feat(Txx): <short description>` (use `fix`, `docs`, `chore`, `test` where they fit better).
 - Automated tests never call the real Anthropic API; stub `fetch`.
 - Database integration tests run the real migrations in a throwaway schema and need `DATABASE_URL` (from `.env`) plus a running Postgres (`docker compose up -d postgres`); they are skipped when it is unset.
-- Every LLM call, including failures, is recorded in `llm_calls`.
+- Every LLM call, including failures, is recorded in `llm_calls` (use `recordLlmCall`, which also stores the cost from `src/llm/pricing.ts`).
+- Scripts that call the API from Node on a machine with TLS inspection need `--use-system-ca` (see `llm:ping`); without it `fetch` fails with `SELF_SIGNED_CERT_IN_CHAIN`.
 
 ## Secrets and private files
 

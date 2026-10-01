@@ -5,6 +5,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   ANTHROPIC_API_KEY: z.string().min(1),
   LLM_MODEL: z.string().min(1),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   OUTPUT_LANGUAGE: z
     .string()
     .regex(/^[a-z]{2}$/, 'must be a 2-letter ISO 639-1 code such as "es" or "en"')
