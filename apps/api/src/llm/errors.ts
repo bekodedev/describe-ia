@@ -10,7 +10,15 @@ export class LlmError extends Error {
 }
 
 /** 429 that kept coming back after every attempt. */
-export class LlmRateLimitError extends LlmError {}
+export class LlmRateLimitError extends LlmError {
+  constructor(
+    message: string,
+    status?: number,
+    readonly retryAfterSeconds?: number, // from the provider's retry-after header, if it sent one
+  ) {
+    super(message, status);
+  }
+}
 
 /** The request did not finish within the configured timeout. */
 export class LlmTimeoutError extends LlmError {}

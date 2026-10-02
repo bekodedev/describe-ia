@@ -4,6 +4,8 @@ WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+# The shared package is complete before install: the root postinstall compiles it.
+COPY packages/shared packages/shared
 RUN pnpm install --frozen-lockfile --filter web...
 COPY apps/web apps/web
 WORKDIR /repo/apps/web

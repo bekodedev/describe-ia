@@ -24,10 +24,13 @@ apps/
       db/            pool and plain-SQL repositories
       config/        env parsing (zod)
     migrations/      SQL migrations
+    requests.http    examples of every endpoint (REST Client / curl)
     prompts/         versioned prompts, always committed (<name>.<version>.md)
       private/       optional local overrides with the same file names (git-ignored)
   web/
     src/             Next.js app, API client in src/lib/api.ts
+packages/
+  shared/            code and types used by both apps (categories, limits, DTOs); compiled to dist/
 docs/                PROJECT.md, ROADMAP.md, DEMO.md
 .internal/           local notes (git-ignored)
 ```
@@ -64,7 +67,8 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 - Automated tests never call the real Anthropic API; stub `fetch`.
 - Database integration tests run the real migrations in a throwaway schema and need `DATABASE_URL` (from `.env`) plus a running Postgres (`docker compose up -d postgres`); they are skipped when it is unset.
 - Every LLM call, including failures, is recorded in `llm_calls` (use `recordLlmCall`, which also stores the cost from `src/llm/pricing.ts`).
-- Scripts that call the API from Node on a machine with TLS inspection need `--use-system-ca` (see `llm:ping`); without it `fetch` fails with `SELF_SIGNED_CERT_IN_CHAIN`.
+- Scripts that call the API from Node on a machine with TLS inspection need `--use-system-ca` (see `llm:ping`, `dev`); without it `fetch` fails with `SELF_SIGNED_CERT_IN_CHAIN`. Inside the Docker container the host's certificates are not available, so on such a machine run the API locally (`pnpm --filter api dev`) or mount the CA and set `NODE_EXTRA_CA_CERTS`.
+- `packages/shared` must be compiled before its consumers run: `pnpm install` does it (root `postinstall`) and the root `dev`, `typecheck` and `test` scripts rebuild it. After editing it, run `pnpm --filter @describe-ia/shared build`.
 
 ## Secrets and private files
 

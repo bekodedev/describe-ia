@@ -145,16 +145,22 @@ const isRetryable = (status: number) => status === 429 || status === 529 || stat
 async function toError(response: Response): Promise<LlmError> {
   const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
   const message = `Anthropic API ${response.status}: ${body?.error?.message ?? response.statusText}`;
-  if (response.status === 429) return new LlmRateLimitError(message, 429);
+  if (response.status === 429)
+    return new LlmRateLimitError(message, 429, retryAfterSeconds(response));
   if (response.status >= 500) return new LlmUpstreamError(message, response.status);
   return new LlmBadRequestError(message, response.status);
 }
 
 // Honour retry-after (seconds); otherwise exponential backoff with full jitter.
 function retryDelayMs(response: Response, attempt: number): number {
-  const seconds = Number(response.headers.get('retry-after'));
-  if (seconds > 0) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  const seconds = retryAfterSeconds(response);
+  if (seconds) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
   return Math.random() * 500 * 2 ** attempt;
+}
+
+function retryAfterSeconds(response: Response): number | undefined {
+  const seconds = Number(response.headers.get('retry-after'));
+  return seconds > 0 ? seconds : undefined;
 }
 
 function parse(raw: unknown, latencyMs: number): LlmResponse {

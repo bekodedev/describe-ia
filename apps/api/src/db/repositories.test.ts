@@ -51,14 +51,15 @@ describe.skipIf(!databaseUrl)('repositories (Postgres)', () => {
       category: 'Home',
     });
     const original = await insertDescription(pool, product.id, 'short', 'original');
-    const edited = await updateEditedContent(pool, original.id, 'edited');
+    const edited = await updateEditedContent(pool, original.id, DEMO_USER_ID, 'edited');
     expect(edited).toMatchObject({ content: 'original', edited_content: 'edited' });
   });
 
   it('lists products newest first', async () => {
     const first = await createProduct(pool, { userId: DEMO_USER_ID, title: 'A', category: 'X' });
     const second = await createProduct(pool, { userId: DEMO_USER_ID, title: 'B', category: 'X' });
-    const ids = (await listProducts(pool, DEMO_USER_ID)).map((p) => p.id);
+    const { products } = await listProducts(pool, DEMO_USER_ID, 50);
+    const ids = products.map((p) => p.id);
     expect(ids.indexOf(second.id)).toBeLessThan(ids.indexOf(first.id));
   });
 

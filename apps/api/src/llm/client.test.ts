@@ -79,6 +79,17 @@ describe('complete', () => {
     expect(sleep).toHaveBeenCalledWith(2000);
   });
 
+  it('keeps the provider retry-after on the error when 429 never goes away', async () => {
+    const { options } = setup(
+      failure(429, { 'retry-after': '4' }),
+      failure(429, { 'retry-after': '4' }),
+      failure(429, { 'retry-after': '4' }),
+    );
+    const error = await complete(params, options).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(LlmRateLimitError);
+    expect((error as LlmRateLimitError).retryAfterSeconds).toBe(4);
+  });
+
   it('does not retry a 400', async () => {
     const { fetchMock, sleep, options } = setup(failure(400));
     await expect(complete(params, options)).rejects.toThrow(LlmBadRequestError);

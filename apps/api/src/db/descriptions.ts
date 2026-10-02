@@ -36,15 +36,19 @@ export async function listDescriptions(db: Db, productId: string): Promise<Descr
 }
 
 // The original content is never overwritten; edits go to edited_content.
+// Only the owner of the product can edit its descriptions.
 export async function updateEditedContent(
   db: Db,
   id: string,
+  userId: string,
   editedContent: string,
 ): Promise<Description | null> {
   const { rows } = await db.query<Description>(
-    `UPDATE descriptions SET edited_content = $2, updated_at = now()
-     WHERE id = $1 RETURNING *`,
-    [id, editedContent],
+    `UPDATE descriptions d SET edited_content = $3, updated_at = now()
+     FROM products p
+     WHERE d.id = $1 AND p.id = d.product_id AND p.user_id = $2
+     RETURNING d.*`,
+    [id, userId, editedContent],
   );
   return rows[0] ?? null;
 }

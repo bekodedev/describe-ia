@@ -36,7 +36,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [x]    |
 | T04 | Naive prompt v1 and generation service                          | T03           | 3        | [x]    |
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [x]    |
-| T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [ ]    |
+| T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [x]    |
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [ ]    |
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [ ]    |
 | T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [ ]    |
@@ -189,28 +189,27 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T06 — API endpoints (generate, list, view, edit description)
 
-**Goal.** Expose the product flow over HTTP, persisting products and descriptions and validating all input.
+**Goal.** Expose the generation service and the stored data over HTTP with a clear contract that the web app will use.
 
 **Deliverables.**
 
-- `POST /api/generations` (JSON: `title`, `category`) → creates the product, calls the service, stores the 3 descriptions (`original_text`) and returns the product with its descriptions. Product and descriptions are saved in one transaction.
-- `GET /api/products` → history for the demo user, newest first, with pagination (`limit`, `offset`).
-- `GET /api/products/:id` → product with its 3 descriptions.
-- `PATCH /api/descriptions/:id` (JSON: `text`) → sets `edited_text`, keeps `original_text`.
-- zod validation on every body/param/query; consistent error shape `{ "error": { "code", "message" } }`; central error handler mapping `InvalidOutputError` (status 422) to 422 and validation errors to 400.
-- Ownership check: only rows of the requesting user are visible.
-- Repositories with plain SQL in `apps/api/src/db/`.
+- `POST /api/generations` (JSON `{ title, category }`) → `201 { product, descriptions[] }`. Title 3–200 characters, category from a closed list defined in the shared package (`packages/shared`, used by the API and by the web app together with the response types and limits).
+- `GET /api/products?limit=&cursor=` → the demo user's products, newest first, keyset pagination by `(created_at, id)` with an opaque cursor: `{ products[], nextCursor }`. `limit` 1–100, default 20.
+- `GET /api/products/:id` → `{ product, descriptions[] }`; 404 if the product is not the user's.
+- `PATCH /api/descriptions/:id` (JSON `{ editedContent }`) → `{ description }`; the generated `content` is never touched; 404 if it belongs to another user.
+- Responses are camelCase with ISO dates (`ProductDto`, `DescriptionDto` in the shared package); database rows stay internal.
+- Central error middleware, one error shape `{ error: { code, message, details?, requestId } }`: validation → 400 with details; `LlmRateLimitError` → 503 + `Retry-After`; `InvalidOutputError` → 422; `LlmTimeoutError` → 504; own rate limit → 429 + `Retry-After`; unknown route → 404; anything else → 500 with a generic message. Every error is logged with its request id (also returned in `X-Request-Id`).
+- In-memory rate limit on `POST /api/generations` (10 per minute) to protect the API key; documented as a single-instance solution to be replaced by a shared store.
+- The generation handler is about 10 lines; routes validate with zod and call the service.
+- `apps/api/requests.http` with an example of every endpoint and error.
 
 **Acceptance criteria.**
 
-- `curl -X POST $API/api/generations -H 'content-type: application/json' -d '{"title":"Stainless steel water bottle 750 ml","category":"Sports"}'` returns 201 with 3 descriptions.
-- `curl $API/api/products` lists it; `curl $API/api/products/<id>` returns it with 3 descriptions.
-- `curl -X PATCH $API/api/descriptions/<id> -H 'content-type: application/json' -d '{"text":"My edit"}'` returns 200 and a later GET shows `edited_text` set and `original_text` unchanged.
-- Empty title, title over the length limit and unknown category input return 400 with the error shape.
-- If generation fails, no product or description rows remain (transaction test), and the failed `llm_calls` rows are still stored.
-- `pnpm test` passes with the LLM stubbed.
+- Tests with supertest and the LLM stubbed cover every endpoint and every error mapping (including pagination with identical and microsecond-apart timestamps, ownership, and "generation fails → nothing saved, both attempts recorded").
+- A real `curl -X POST localhost:4000/api/generations …` returns 201 with 3 descriptions and the product is the first item of `GET /api/products`.
+- `pnpm test`, `pnpm lint` and `pnpm typecheck` pass.
 
-**Out of scope.** Photo upload, cost report, frontend, pagination cursors, delete endpoints.
+**Out of scope.** Photo upload (T07), UI (T08), delete endpoints, cost report.
 
 ---
 

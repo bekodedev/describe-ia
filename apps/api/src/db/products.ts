@@ -33,10 +33,31 @@ export async function findProduct(db: Db, id: string, userId: string): Promise<P
   return rows[0] ?? null;
 }
 
-export async function listProducts(db: Db, userId: string, limit = 50): Promise<Product[]> {
-  const { rows } = await db.query<Product>(
-    'SELECT * FROM products WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2',
-    [userId, limit],
+// `createdAt` is Postgres' own text for the timestamp: converting it to a JS Date would drop
+// the microseconds and make the keyset comparison skip or repeat rows.
+export interface ProductCursor {
+  createdAt: string;
+  id: string;
+}
+
+// Newest first. Keyset pagination: stable even if products are created while the user pages.
+export async function listProducts(
+  db: Db,
+  userId: string,
+  limit: number,
+  cursor?: ProductCursor,
+): Promise<{ products: Product[]; next: ProductCursor | null }> {
+  const { rows } = await db.query<Product & { created_at_text: string }>(
+    `SELECT *, created_at::text AS created_at_text FROM products
+     WHERE user_id = $1
+       AND ($2::timestamptz IS NULL OR (created_at, id) < ($2::timestamptz, $3::uuid))
+     ORDER BY created_at DESC, id DESC
+     LIMIT $4`,
+    [userId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
   );
-  return rows;
+  const products = rows.slice(0, limit);
+  const last = products.at(-1);
+  const next =
+    rows.length > limit && last ? { createdAt: last.created_at_text, id: last.id } : null;
+  return { products, next };
 }

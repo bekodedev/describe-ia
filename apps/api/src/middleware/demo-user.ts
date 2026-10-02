@@ -5,7 +5,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
-      user?: { id: string };
+      user: { id: string }; // set by the demoUser middleware, which runs before every route
     }
   }
 }

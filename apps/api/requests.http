@@ -1,0 +1,67 @@
+### Examples for every endpoint. Open in VS Code with the "REST Client" extension, or copy the curls.
+### Start the API first: `docker compose up -d` or `pnpm --filter api dev` (port 4000).
+
+@api = http://localhost:4000
+
+### Health
+GET {{api}}/health
+
+### Generate the 3 descriptions of a product -> 201 { product, descriptions[] }
+### category must be one of the list in packages/shared/src/index.ts
+# @name generate
+POST {{api}}/api/generations
+Content-Type: application/json
+
+{
+  "title": "Stainless steel water bottle 750 ml",
+  "category": "Sports"
+}
+
+### Ids from the previous response (REST Client fills these in after you send "generate")
+@productId = {{generate.response.body.$.product.id}}
+@descriptionId = {{generate.response.body.$.descriptions[0].id}}
+
+### List the demo user's products, newest first -> { products[], nextCursor }
+GET {{api}}/api/products?limit=5
+
+### Next page: paste the nextCursor of the previous response
+GET {{api}}/api/products?limit=5&cursor=PASTE_NEXT_CURSOR_HERE
+
+### One product with its 3 descriptions (404 if it is not the user's)
+GET {{api}}/api/products/{{productId}}
+
+### Save an edit; the generated text (content) is kept -> { description }
+PATCH {{api}}/api/descriptions/{{descriptionId}}
+Content-Type: application/json
+
+{
+  "editedContent": "My own version of this description."
+}
+
+### --- Errors (all have the shape { error: { code, message, details?, requestId } }) ---
+
+### 400 validation_error: title too short and category outside the list
+POST {{api}}/api/generations
+Content-Type: application/json
+
+{ "title": "x", "category": "Cosmetics" }
+
+### 400 validation_error: id is not a UUID
+GET {{api}}/api/products/not-a-uuid
+
+### 404 not_found
+GET {{api}}/api/products/00000000-0000-4000-8000-0000000000ff
+
+### 429 rate_limited (+ Retry-After): send the generation request more than 10 times in a minute
+
+### Other statuses: 422 invalid_model_output, 503 llm_rate_limited (+ Retry-After),
+### 504 llm_timeout, 500 internal_error (generic message; details only in the server log)
+
+###
+# The same with curl:
+#   curl -X POST localhost:4000/api/generations -H 'content-type: application/json' \
+#        -d '{"title":"Stainless steel water bottle 750 ml","category":"Sports"}'
+#   curl "localhost:4000/api/products?limit=5"
+#   curl localhost:4000/api/products/<id>
+#   curl -X PATCH localhost:4000/api/descriptions/<id> -H 'content-type: application/json' \
+#        -d '{"editedContent":"My edit"}'

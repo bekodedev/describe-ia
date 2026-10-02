@@ -3,11 +3,12 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
+    "postinstall": "pnpm --filter @describe-ia/shared build",
+    "dev": "pnpm --filter @describe-ia/shared build && pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "lint": "eslint .",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "typecheck": "pnpm --filter @describe-ia/shared build && pnpm -r typecheck",
+    "test": "pnpm --filter @describe-ia/shared build && pnpm -r test",
     "format": "prettier --write ."
   },
   "devDependencies": {
