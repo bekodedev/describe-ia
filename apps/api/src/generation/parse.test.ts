@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidOutputError, parseVariants } from './parse.js';
+import { InvalidOutputError } from './errors.js';
+import { parseVariants } from './parse.js';
 
 describe('parseVariants (v1, naive)', () => {
   it('cuts the text between the three headings', () => {

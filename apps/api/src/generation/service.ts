@@ -4,14 +4,11 @@ import { insertDescription, type Description } from '../db/descriptions.js';
 import { linkLlmCallToProduct } from '../db/llm-calls.js';
 import { withTransaction } from '../db/pool.js';
 import { createProduct, type Product } from '../db/products.js';
-import { complete, textOf, type CompleteParams, type LlmResponse } from '../llm/client.js';
-import { recordLlmCall } from '../llm/record.js';
-import { parseVariants } from './parse.js';
+import { complete, type CompleteParams, type LlmResponse } from '../llm/client.js';
+import { askForDescriptions, type PromptVersion } from './ask.js';
 import { loadPrompt, renderPrompt } from './prompts.js';
 
 const PROMPT_NAME = 'generate-description';
-const PROMPT_VERSION = 'v1';
-const MAX_TOKENS = 1500;
 
 export interface GenerationInput {
   userId: string;
@@ -24,9 +21,10 @@ export interface GenerationDeps {
   complete: (params: CompleteParams) => Promise<LlmResponse>;
   model: string;
   language: string; // ISO 639-1 code, e.g. "es"
+  promptVersion?: PromptVersion; // v2 unless an experiment asks for v1
 }
 
-function defaultDeps(): GenerationDeps {
+export function defaultDeps(): GenerationDeps {
   const env = loadEnv();
   return {
     complete: (params) => complete(params),
@@ -44,25 +42,23 @@ export async function generateDescriptions(
   input: GenerationInput,
   deps: GenerationDeps = defaultDeps(),
 ): Promise<{ product: Product; descriptions: Description[]; rawText: string }> {
-  const { template, source } = await loadPrompt(PROMPT_NAME, PROMPT_VERSION);
-  console.log(`Using ${source} prompt ${PROMPT_NAME}.${PROMPT_VERSION}`);
+  const version = deps.promptVersion ?? 'v2';
+  const { template, source } = await loadPrompt(PROMPT_NAME, version);
+  console.log(`Using ${source} prompt ${PROMPT_NAME}.${version}`);
   const prompt = renderPrompt(template, {
     title: input.title,
     category: input.category,
     language: languageName(deps.language),
   });
 
-  // Recorded even if the answer cannot be parsed (status invalid_output).
-  const {
-    response,
-    value: variants,
-    callId,
-  } = await recordLlmCall(
-    pool,
-    { userId: input.userId, promptVersion: PROMPT_VERSION, model: deps.model },
-    () => deps.complete({ messages: [{ role: 'user', content: prompt }], maxTokens: MAX_TOKENS }),
-    (r) => parseVariants(textOf(r)),
-  );
+  // Every attempt is recorded, valid or not. Throws InvalidOutputError (422) if the model never complies.
+  const { variants, callId, rawText } = await askForDescriptions(pool, {
+    userId: input.userId,
+    model: deps.model,
+    version,
+    prompt,
+    complete: deps.complete,
+  });
 
   return withTransaction(pool, async (tx) => {
     const product = await createProduct(tx, input);
@@ -72,6 +68,6 @@ export async function generateDescriptions(
       await insertDescription(tx, product.id, 'seo', variants.seo),
     ];
     await linkLlmCallToProduct(tx, callId, product.id);
-    return { product, descriptions, rawText: textOf(response) };
+    return { product, descriptions, rawText };
   });
 }

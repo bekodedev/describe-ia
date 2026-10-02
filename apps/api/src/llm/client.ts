@@ -34,6 +34,8 @@ export interface CompleteParams {
   maxTokens: number;
   tools?: Tool[];
   toolChoice?: ToolChoice;
+  // JSON schema for structured output: the API constrains the answer to it.
+  jsonSchema?: Record<string, unknown>;
 }
 
 export type ContentBlock =
@@ -120,6 +122,9 @@ async function send(params: CompleteParams, options: ClientOptions): Promise<Res
         messages: params.messages,
         tools: params.tools,
         tool_choice: params.toolChoice,
+        output_config: params.jsonSchema && {
+          format: { type: 'json_schema', schema: params.jsonSchema },
+        },
       }),
       signal: controller.signal,
     });

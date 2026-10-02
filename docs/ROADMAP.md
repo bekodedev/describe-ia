@@ -35,7 +35,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T02 | Database schema, migrations and demo user                       | T01           | 3        | [x]    |
 | T03 | HTTP LLM client: config, timeouts, retries, token-usage logging | T01, T02      | 4        | [x]    |
 | T04 | Naive prompt v1 and generation service                          | T03           | 3        | [x]    |
-| T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [ ]    |
+| T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [x]    |
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [ ]    |
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [ ]    |
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [ ]    |
@@ -165,24 +165,25 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T05 — Structured output, zod validation and retry on invalid format
 
-**Goal.** Make the model return the 3 variants in a machine-checkable shape, validate it with zod, and retry when the shape is wrong.
+**Goal.** Eliminate the format failures seen in T04: get structured JSON from the model, validate it with zod, and retry once when it is invalid. Measure the improvement against v1 with the same products.
 
 **Deliverables.**
 
-- `generate-description.v2.md` prompt (public) asking for the 3 variants, with length guidance per variant.
-- Structured output through a forced tool call (`tools` + `tool_choice`) on the Messages API, still with plain `fetch`.
-- zod schema `GenerationResult`: `short`, `medium`, `seo` as non-empty strings with sensible max lengths.
-- Retry on invalid format: up to `LLM_MAX_FORMAT_RETRIES` (default 2), each attempt logged as its own `llm_calls` row with status `invalid_output` and the validation error summary; on the retry the error is fed back to the model.
-- A typed error (`InvalidModelOutputError`) after retries are exhausted.
-- Service returns a validated object instead of raw text.
+- Structured output through JSON-schema structured outputs (`output_config.format`, plain `fetch`), chosen over a forced tool call because it is GA for the development and production models and adds no tool-use prompt overhead (about 500 input tokens per call on Haiku 4.5). The choice is justified in the devlog.
+- `apps/api/prompts/generate-description.v2.md` (public, simplified): clear rules (language from `{{language}}`, no invented specifications, neutral tone, no emojis, no markdown). The optimised version with few-shot examples and brand tone lives in `apps/api/prompts/private/` and is never committed.
+- `DescriptionsSchema` (zod) with per-variant length limits (characters): short 20–220, medium 80–700, seo 200–1600. The API does not support `minLength`/`maxLength`, so the JSON schema sent to the model has no limits and zod enforces them. The response is always validated, even though the API guarantees the shape.
+- Retry: if an answer is invalid, one retry that adds the validation error to the conversation. Every attempt is stored in `llm_calls` (`invalid_output` for the failed ones). Still invalid → `InvalidOutputError` with `status = 422`.
+- `prompt_version = v2` in `llm_calls`; the service uses v2 by default and keeps v1 available (`gen:try "<title>" "<category>" v1`) for the comparison.
+- `pnpm --filter api gen:compare [--rounds N]` runs the experiment products with v1 and v2 and writes `docs/experiments/t05-v1-vs-v2.md` (parse success rate, retries, average tokens, cost and latency).
 
 **Acceptance criteria.**
 
-- Tests with stubbed responses: valid → passes; missing field → retried and succeeds; three consecutive bad answers → `InvalidModelOutputError` and 3 `invalid_output` rows; extra fields are stripped.
-- `pnpm --filter api gen:try "Stainless steel water bottle 750 ml" "Sports"` prints three distinct variants, validated.
-- Running it 10 times against the real API yields 10 valid results (note the number of retries needed in the devlog).
+- Unit tests: valid JSON passes; a missing field is followed by a retry that succeeds and the retry message names the problem; two invalid answers in a row give a typed 422 error and two `invalid_output` rows; unknown fields are stripped; the request carries the schema.
+- `pnpm --filter api gen:try "Stainless steel water bottle 750 ml" "Sports"` prints three validated variants.
+- With the real API, every product of the experiment is valid with v2 (any remaining failure is explained in the comparison file).
+- `docs/experiments/t05-v1-vs-v2.md` exists with real numbers.
 
-**Out of scope.** HTTP endpoints, persistence of products/descriptions, images.
+**Out of scope.** HTTP endpoints, images, quality validation beyond the length limits.
 
 ---
 
@@ -196,7 +197,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 - `GET /api/products` → history for the demo user, newest first, with pagination (`limit`, `offset`).
 - `GET /api/products/:id` → product with its 3 descriptions.
 - `PATCH /api/descriptions/:id` (JSON: `text`) → sets `edited_text`, keeps `original_text`.
-- zod validation on every body/param/query; consistent error shape `{ "error": { "code", "message" } }`; central error handler mapping `InvalidModelOutputError` to 502 and validation errors to 400.
+- zod validation on every body/param/query; consistent error shape `{ "error": { "code", "message" } }`; central error handler mapping `InvalidOutputError` (status 422) to 422 and validation errors to 400.
 - Ownership check: only rows of the requesting user are visible.
 - Repositories with plain SQL in `apps/api/src/db/`.
 
@@ -337,7 +338,7 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 | Risk                                                                                                 | Impact                                  | Mitigation                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Inconsistent LLM format.** The model may return missing fields, extra text or wrong types.         | Broken results, failed requests.        | Forced tool call for structure (T05), zod validation, retry with error feedback, every invalid attempt logged, typed error and a clear 502 after retries.    |
+| **Inconsistent LLM format.** The model may return missing fields, extra text or wrong types.         | Broken results, failed requests.        | Structured output (JSON schema) (T05), zod validation, retry with error feedback, every invalid attempt logged, typed error and a clear 502 after retries.   |
 | **Rate limits and provider outages.** 429/5xx from the API.                                          | Failed generations, slow responses.     | Timeouts, exponential backoff with jitter honouring `retry-after` (T03), clear user-facing error, failures logged with status.                               |
 | **Cost.** Retries, long prompts and images raise the price per description.                          | Unit economics unclear or wrong.        | Token and cost logging from T03/T09, cost report, failed-call cost shown separately, model configurable so a cheaper one can be tried, output length limits. |
 | **Image size.** Large photos inflate tokens, latency and memory, and the provider limits image size. | Slow or rejected requests, higher cost. | Type and size validation by content (T07), 5 MB default limit, one image per request; resizing is listed as future work.                                     |

@@ -61,6 +61,17 @@ describe('complete', () => {
     expect(response.raw).toEqual(okBody);
   });
 
+  it('asks for structured output when a JSON schema is given', async () => {
+    const { fetchMock, options } = setup(ok());
+    const schema = { type: 'object', properties: { a: { type: 'string' } } };
+    await complete({ ...params, jsonSchema: schema }, options);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).output_config).toEqual({
+      format: { type: 'json_schema', schema },
+    });
+  });
+
   it('retries a 429 after the retry-after delay', async () => {
     const { fetchMock, sleep, options } = setup(failure(429, { 'retry-after': '2' }), ok());
     await complete(params, options);

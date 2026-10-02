@@ -4,7 +4,7 @@ import { DEMO_USER_ID } from '../config/demo-user.js';
 import { createTestSchema } from '../db/test-schema.js';
 import { seedDemoUser } from '../db/users.js';
 import type { LlmResponse } from '../llm/client.js';
-import { InvalidOutputError } from './parse.js';
+import { InvalidOutputError } from './errors.js';
 import { generateDescriptions, type GenerationDeps } from './service.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -24,6 +24,7 @@ const depsReturning = (text: string, prompts: string[] = []): GenerationDeps => 
   },
   model: 'claude-haiku-4-5-20251001',
   language: 'es',
+  promptVersion: 'v1',
 });
 
 describe.skipIf(!databaseUrl)('generateDescriptions (Postgres, stubbed LLM)', () => {
@@ -84,5 +85,29 @@ describe.skipIf(!databaseUrl)('generateDescriptions (Postgres, stubbed LLM)', ()
       product_id: null,
     });
     expect(rows[0].error_message).toMatch(/headings/);
+  });
+
+  it('v2 (default): saves what the model returned as JSON and stores prompt_version v2', async () => {
+    const json = JSON.stringify({
+      short: 'A steel bottle for every day.',
+      medium: 'This steel bottle holds 750 ml and is made for sport and daily use. '.repeat(2),
+      seo: 'Stainless steel water bottle, 750 ml, for sports, the gym, hiking and the office. '.repeat(
+        3,
+      ),
+    });
+    const v2Deps = { ...depsReturning(json), promptVersion: undefined }; // undefined = the default (v2)
+
+    const result = await generateDescriptions(
+      pool,
+      { userId: DEMO_USER_ID, title: 'Steel bottle', category: 'Sports' },
+      v2Deps,
+    );
+
+    expect(result.descriptions.map((d) => d.content)[0]).toBe('A steel bottle for every day.');
+    const { rows } = await pool.query(
+      'SELECT prompt_version FROM llm_calls WHERE product_id = $1',
+      [result.product.id],
+    );
+    expect(rows).toEqual([{ prompt_version: 'v2' }]);
   });
 });

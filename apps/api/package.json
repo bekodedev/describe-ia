@@ -14,7 +14,8 @@
     "migrate:create": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create -m migrations --migration-file-language sql",
     "seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
     "llm:ping": "tsx --use-system-ca --env-file-if-exists=../../.env src/llm/ping.ts",
-    "gen:try": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/try.ts"
+    "gen:try": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/try.ts",
+    "gen:compare": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/compare.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

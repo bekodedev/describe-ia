@@ -1,16 +1,9 @@
+import { InvalidOutputError } from './errors.js';
+
 export interface Variants {
   short: string;
   medium: string;
   seo: string;
-}
-
-export class InvalidOutputError extends Error {
-  constructor(
-    message: string,
-    readonly text: string,
-  ) {
-    super(message);
-  }
 }
 
 // v1 is deliberately naive: it looks for the three headings and cuts the text between them.

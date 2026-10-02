@@ -36,21 +36,22 @@ docs/                PROJECT.md, ROADMAP.md, DEMO.md
 
 Commands marked TODO do not exist yet; the task that creates them replaces TODO with the real command.
 
-| Purpose           | Command                                                                     | Status     |
-| ----------------- | --------------------------------------------------------------------------- | ---------- |
-| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                     | done       |
-| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`      | done       |
-| Test              | `pnpm test`                                                                 | done       |
-| Build             | `pnpm build`                                                                | done       |
-| Lint              | `pnpm lint`                                                                 | done       |
-| Typecheck         | `pnpm typecheck`                                                            | done       |
-| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                                | done       |
-| New migration     | `pnpm --filter api migrate:create <name>`                                   | done       |
-| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)              | done       |
-| Cost report       | `pnpm --filter api report:cost`                                             | TODO (T09) |
-| Try a generation  | `pnpm --filter api gen:try "<title>" "<category>"` (real call, needs a key) | done       |
-| Seed demo user    | `pnpm --filter api seed`                                                    | done       |
-| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                             | TODO (T10) |
+| Purpose           | Command                                                                                            | Status     |
+| ----------------- | -------------------------------------------------------------------------------------------------- | ---------- |
+| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                                            | done       |
+| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`                             | done       |
+| Test              | `pnpm test`                                                                                        | done       |
+| Build             | `pnpm build`                                                                                       | done       |
+| Lint              | `pnpm lint`                                                                                        | done       |
+| Typecheck         | `pnpm typecheck`                                                                                   | done       |
+| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                                                       | done       |
+| New migration     | `pnpm --filter api migrate:create <name>`                                                          | done       |
+| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)                                     | done       |
+| Cost report       | `pnpm --filter api report:cost`                                                                    | TODO (T09) |
+| Try a generation  | `pnpm --filter api gen:try "<title>" "<category>"` (real call, needs a key)                        | done       |
+| Compare v1 / v2   | `pnpm --filter api gen:compare [--rounds N]` (real calls, writes docs/experiments/t05-v1-vs-v2.md) | done       |
+| Seed demo user    | `pnpm --filter api seed`                                                                           | done       |
+| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                                                    | TODO (T10) |
 
 ## Working rules
 
