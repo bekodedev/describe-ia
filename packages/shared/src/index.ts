@@ -53,6 +53,13 @@ export interface GenerationResponse {
   descriptions: DescriptionDto[];
 }
 
+// GET /api/products/:id has the same shape as the generation response.
+export type ProductDetailResponse = GenerationResponse;
+
+export interface EditResponse {
+  description: DescriptionDto;
+}
+
 export interface ProductListResponse {
   products: ProductDto[];
   nextCursor: string | null;

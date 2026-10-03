@@ -29,7 +29,8 @@ apps/
     prompts/         versioned prompts, always committed (<name>.<version>.md)
       private/       optional local overrides with the same file names (git-ignored)
   web/
-    src/             Next.js app, API client in src/lib/api.ts
+    src/             Next.js app (app/ pages, components/, lib/); API client in src/lib/api.ts
+    e2e/             Playwright tests (API mocked)
 packages/
   shared/            code and types used by both apps (categories, limits, DTOs); compiled to dist/
 docs/                PROJECT.md, ROADMAP.md, DEMO.md
@@ -44,7 +45,7 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 | ----------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
 | Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                                               | done       |
 | Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`                                | done       |
-| Test              | `pnpm test`                                                                                           | done       |
+| Test              | `pnpm test` (API + web Playwright)                                                                    | done       |
 | Build             | `pnpm build`                                                                                          | done       |
 | Lint              | `pnpm lint`                                                                                           | done       |
 | Typecheck         | `pnpm typecheck`                                                                                      | done       |
@@ -69,6 +70,8 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
 - Database integration tests run the real migrations in a throwaway schema and need `DATABASE_URL` (from `.env`) plus a running Postgres (`docker compose up -d postgres`); they are skipped when it is unset.
 - Every LLM call, including failures, is recorded in `llm_calls` (use `recordLlmCall`, which also stores the cost from `src/llm/pricing.ts`).
 - Scripts that call the API from Node on a machine with TLS inspection need `--use-system-ca` (see `llm:ping`, `dev`); without it `fetch` fails with `SELF_SIGNED_CERT_IN_CHAIN`. Inside the Docker container the host's certificates are not available, so on such a machine run the API locally (`pnpm --filter api dev`) or mount the CA and set `NODE_EXTRA_CA_CERTS`.
+- The web tests (`pnpm --filter web test`) start their own Next.js server on port 3100 and mock every `/api` call, so they need no API or database. First time on a machine: `pnpm --filter web exec playwright install chromium` (behind TLS inspection prefix it with `NODE_OPTIONS=--use-system-ca`).
+- In the browser the web app calls `/api/*` on its own origin; Next forwards it to `API_URL` (see `apps/web/next.config.ts`). Do not add CORS or absolute API URLs to client code.
 - `packages/shared` must be compiled before its consumers run: `pnpm install` does it (root `postinstall`) and the root `dev`, `typecheck` and `test` scripts rebuild it. After editing it, run `pnpm --filter @describe-ia/shared build`.
 
 ## Secrets and private files

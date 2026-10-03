@@ -38,7 +38,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [x]    |
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [x]    |
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [x]    |
-| T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [ ]    |
+| T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [x]    |
 | T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [ ]    |
 | T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [ ]    |
 | T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [ ]    |
@@ -239,26 +239,28 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T08 — Next.js frontend: form, results page, copy and edit
 
-**Goal.** Provide a minimal but usable UI covering the whole flow: create, view, copy, edit and browse history.
+**Goal.** A minimal but clean UI for the whole flow: form → 3 descriptions → copy or edit, plus a history. It must look good on a 1080p screen, also at 125% zoom (1536 x 864 CSS pixels).
 
 **Deliverables.**
 
-- Pages: `/` (form with title, category, optional photo with preview), `/products/[id]` (results), `/history` (list).
-- Results page: three cards (short, medium, SEO), each with **Copy** (clipboard) and **Edit** (inline textarea, save, and "restore original").
-- Loading state during generation and clear error states (validation, model failure, network).
-- A single typed API client module in `apps/web/src/lib/api.ts`; base URL from `NEXT_PUBLIC_API_URL`.
-- Minimal, dependency-light styling (plain CSS or CSS modules); all UI strings in English.
-- CORS configured on the API for the web origin.
+- Tailwind CSS, no component library. Pages:
+  - `/`: title, category select (the shared list), optional photo with drag and drop and preview. While generating, the button reads "Generating 3 descriptions…".
+  - `/products/[id]`: the title, the photo and three cards (Short, Medium, SEO), each with a character counter, **Copy** (with "Copied" feedback) and **Edit** (textarea that saves with PATCH). An edited text is shown with an "Edited" badge and a "View original" link.
+  - `/products`: the history, newest first, with "Load more".
+- API errors in plain language: 429/503 "Too many requests, wait a few seconds", 422 "The model returned an invalid format, please retry", plus timeout, not found, network and validation messages.
+- One typed API client, `apps/web/src/lib/api.ts`, that reuses the contract types of `packages/shared`.
+- The browser only talks to the Next.js server, which forwards `/api/*` to the API (`rewrites`), so the API needs no CORS and photo URLs stay relative.
+- Accessible by construction: labelled fields, landmarks, a skip link, focus styles, `role="alert"` for errors.
+- `docs/screenshots/`: the empty form and a result page (used by the README).
 
 **Acceptance criteria.**
 
-- With `docker compose up -d`, opening `$WEB`, filling the form (with and without photo) and submitting leads to `/products/<id>` showing 3 descriptions.
-- Copy places the exact text in the clipboard; Edit + Save persists after a page reload; "Restore original" brings back the original text.
-- `/history` lists the created products, newest first, each linking to its result page.
-- Submitting an empty title shows an inline error without calling the API.
-- `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (component tests for the copy/edit logic).
+- The whole flow works in a browser with and without a photo (checked against the real API).
+- Playwright tests (API mocked with `route.fulfill`): fill in, generate, see the 3 cards, copy; empty form without an API call; photo preview and upload; edit and view original; every error message; history and "Load more".
+- Lighthouse accessibility is at least 90 on `/` (measured on the production build).
+- `pnpm lint`, `pnpm typecheck` and `pnpm test` pass.
 
-**Out of scope.** Authentication screens, i18n framework, design system, dark mode, analytics.
+**Out of scope.** Login, a marketing landing page, a cost dashboard, i18n, dark mode.
 
 ---
 
