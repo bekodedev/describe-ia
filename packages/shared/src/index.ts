@@ -22,6 +22,11 @@ export const TITLE_LENGTH = { min: 3, max: 200 } as const;
 // Generated texts are at most 1600 characters; an edit may be a bit longer.
 export const EDITED_CONTENT_MAX = 3000;
 
+// Photo upload: the same limits are checked by the form and by the API.
+export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export type ImageType = (typeof IMAGE_TYPES)[number];
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
 export type DescriptionVariant = 'short' | 'medium' | 'seo';
 
 // What the API returns (camelCase, dates as ISO strings). The web app uses these types.
@@ -29,7 +34,7 @@ export interface ProductDto {
   id: string;
   title: string;
   category: string;
-  imagePath: string | null;
+  imageUrl: string | null; // path of the photo endpoint, null when the product has no photo
   createdAt: string;
 }
 

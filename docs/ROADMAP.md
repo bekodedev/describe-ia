@@ -37,7 +37,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T04 | Naive prompt v1 and generation service                          | T03           | 3        | [x]    |
 | T05 | Structured output, zod validation and retry on invalid format   | T04           | 4        | [x]    |
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [x]    |
-| T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [ ]    |
+| T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [x]    |
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [ ]    |
 | T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [ ]    |
 | T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [ ]    |
@@ -215,27 +215,25 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ## T07 — Optional photo: upload, validation and multimodal request
 
-**Goal.** Let a product include one photo that is validated, stored locally and sent to the model so the descriptions can use what is visible in it.
+**Goal.** Let a product include one photo so the model describes what is visible (colour, shape, finish) in addition to the title.
 
 **Deliverables.**
 
-- `POST /api/generations` accepts `multipart/form-data` (`title`, `category`, optional `image`) as well as JSON.
-- Validation: allowed types `image/jpeg`, `image/png`, `image/webp` checked by content (magic bytes), not only by header; max size configurable (`MAX_IMAGE_BYTES`, default 5 MB); one file only.
-- Files stored under `uploads/` with a generated file name (never the client's name); path saved in `products.image_path`; `uploads` is a Docker volume.
-- LLM client supports an image content block (base64) in the request.
-- Prompt `generate-description.v3.md` (public) with a rule to describe only what is visible and never invent attributes; falls back to the text-only behaviour when there is no image.
-- `GET /api/products/:id/image` serves the stored photo.
-- `.env.example` updated with `MAX_IMAGE_BYTES` and `UPLOADS_DIR`.
+- `POST /api/generations` also accepts `multipart/form-data` (`title`, `category`, optional `image`, one file) in addition to JSON. `multer` in memory.
+- Validation: only JPEG, PNG and WebP, checked by the declared type and by the file's first bytes (magic bytes); maximum 5 MB (`MAX_IMAGE_BYTES`); every rejection is a 400 with code `invalid_image`.
+- The photo is resized before it is sent (`sharp`: longest side 1024 px, JPEG quality 80, EXIF orientation applied, transparency flattened) to control tokens and cost. The original is saved as uploaded under a generated name in `UPLOADS_DIR` (the `uploads` Docker volume) and the name goes into `products.image_path`. A failed generation leaves no file.
+- The image goes to the model as a base64 `image` block placed before the text, as the vision documentation recommends. Prompt v2 gains a rule: use what is visible, never invent what cannot be seen.
+- `GET /api/products/:id/image` serves the original photo to its owner (404 for anyone else or when there is no photo). Products expose `imageUrl`.
+- `.env.example`: `UPLOADS_DIR`, `MAX_IMAGE_BYTES`.
+- `docs/experiments/t07-images.md`: three real photos, outputs, correctness of the visible attributes and the cost of a photo.
 
 **Acceptance criteria.**
 
-- `curl -X POST $API/api/generations -F title='Ceramic mug' -F category='Home' -F image=@sample.jpg` returns 201 with 3 descriptions and a non-null `image_path` on the product.
-- A `.txt` file renamed to `.jpg` returns 400; a file over `MAX_IMAGE_BYTES` returns 413; two files return 400.
-- The `llm_calls` row for the request reports higher `input_tokens` than the same request without an image.
-- The same request without `image` still works.
-- Tests cover validation and check that the request body sent to the (stubbed) model contains an image block only when a photo is given.
+- Tests (LLM stubbed): a file over 5 MB → 400; a `.txt` renamed to `.jpg` → 400; a type that is not allowed, a corrupt image and two files → 400; a valid image reaches the LLM client as a resized JPEG image block before the text, only when a photo is given; the original is stored and served to its owner only; a failed generation stores nothing.
+- A real `curl -F image=@photo.jpg` returns 201 with 3 descriptions and a non-null `imageUrl`; the same request without `image` still works.
+- The experiment file shows the descriptions of 3 real photos and the input-token difference with and without the photo.
 
-**Out of scope.** Image resizing or compression, multiple photos, cloud object storage, virus scanning.
+**Out of scope.** Cloud object storage or a CDN, background processing, several photos, virus scanning.
 
 ---
 

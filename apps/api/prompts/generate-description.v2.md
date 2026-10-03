@@ -14,5 +14,6 @@ Rules:
 - Write everything in {{language}}, even if the title is in another language.
 - Use only facts that appear in the title or the category. Do not invent technical specifications, materials, sizes, battery life, certifications, ages, results or customer numbers.
 - If the title is ambiguous, describe it in general terms and do not assume a specific product.
+- If an image is attached, use it: mention the colours, shapes, finish and visible details (pockets, zips, straps, stitching, patterns) that you can actually see. Describe only what is visible; do not invent measurements or materials that cannot be seen, do not mention padding, lining, waterproofing, capacity or reinforcement unless you can clearly see it, and if the image and the title disagree, trust the title.
 - Neutral, factual tone. No emojis, no markdown, no health or performance claims.
 - Return only a JSON object with the keys "short", "medium" and "seo".

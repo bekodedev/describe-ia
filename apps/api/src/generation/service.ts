@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { loadEnv } from '../config/env.js';
+import type { PreparedImage } from '../images/prepare.js';
+import { createImageStore, type ImageStore } from '../images/storage.js';
 import { insertDescription, type Description } from '../db/descriptions.js';
 import { linkLlmCallToProduct } from '../db/llm-calls.js';
 import { withTransaction } from '../db/pool.js';
@@ -14,6 +16,7 @@ export interface GenerationInput {
   userId: string;
   title: string;
   category: string;
+  image?: PreparedImage;
 }
 
 // What the service needs from the outside; tests replace `complete`.
@@ -21,6 +24,7 @@ export interface GenerationDeps {
   complete: (params: CompleteParams) => Promise<LlmResponse>;
   model: string;
   language: string; // ISO 639-1 code, e.g. "es"
+  imageStore: ImageStore;
   promptVersion?: PromptVersion; // v2 unless an experiment asks for v1
 }
 
@@ -30,6 +34,7 @@ export function defaultDeps(): GenerationDeps {
     complete: (params) => complete(params),
     model: env.LLM_MODEL,
     language: env.OUTPUT_LANGUAGE,
+    imageStore: createImageStore(env.UPLOADS_DIR),
   };
 }
 
@@ -57,17 +62,31 @@ export async function generateDescriptions(
     model: deps.model,
     version,
     prompt,
+    imageBase64: input.image?.base64,
     complete: deps.complete,
   });
 
-  return withTransaction(pool, async (tx) => {
-    const product = await createProduct(tx, input);
-    const descriptions = [
-      await insertDescription(tx, product.id, 'short', variants.short),
-      await insertDescription(tx, product.id, 'medium', variants.medium),
-      await insertDescription(tx, product.id, 'seo', variants.seo),
-    ];
-    await linkLlmCallToProduct(tx, callId, product.id);
-    return { product, descriptions, rawText };
-  });
+  // The photo is stored only now, once the model has answered: a failed generation leaves no file.
+  const { image } = input;
+  const imagePath = image && (await deps.imageStore.save(image.original, image.originalType));
+  try {
+    return await withTransaction(pool, async (tx) => {
+      const product = await createProduct(tx, {
+        userId: input.userId,
+        title: input.title,
+        category: input.category,
+        imagePath,
+      });
+      const descriptions = [
+        await insertDescription(tx, product.id, 'short', variants.short),
+        await insertDescription(tx, product.id, 'medium', variants.medium),
+        await insertDescription(tx, product.id, 'seo', variants.seo),
+      ];
+      await linkLlmCallToProduct(tx, callId, product.id);
+      return { product, descriptions, rawText };
+    });
+  } catch (error) {
+    if (imagePath) await deps.imageStore.remove(imagePath);
+    throw error;
+  }
 }

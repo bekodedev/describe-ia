@@ -7,7 +7,7 @@ export const toProductDto = (p: Product): ProductDto => ({
   id: p.id,
   title: p.title,
   category: p.category,
-  imagePath: p.image_path,
+  imageUrl: p.image_path ? `/api/products/${p.id}/image` : null,
   createdAt: p.created_at.toISOString(),
 });
 

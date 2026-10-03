@@ -20,12 +20,15 @@
   "dependencies": {
     "@describe-ia/shared": "workspace:*",
     "express": "^5.2.1",
+    "multer": "^2.4.0",
     "node-pg-migrate": "^9.0.0",
     "pg": "^8.23.0",
+    "sharp": "^0.35.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "nodemon": "^3.1.14",

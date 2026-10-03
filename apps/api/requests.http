@@ -17,6 +17,30 @@ Content-Type: application/json
   "category": "Sports"
 }
 
+### The same with a photo (multipart/form-data): JPEG, PNG or WebP, at most 5 MB.
+### Replace the path with a real image. The response has product.imageUrl.
+# @name generateWithPhoto
+POST {{api}}/api/generations
+Content-Type: multipart/form-data; boundary=----describe
+
+------describe
+Content-Disposition: form-data; name="title"
+
+Ceramic mug
+------describe
+Content-Disposition: form-data; name="category"
+
+Home & Kitchen
+------describe
+Content-Disposition: form-data; name="image"; filename="mug.jpg"
+Content-Type: image/jpeg
+
+< ./mug.jpg
+------describe--
+
+### The photo as it was uploaded (only for its owner)
+GET {{api}}{{generateWithPhoto.response.body.$.product.imageUrl}}
+
 ### Ids from the previous response (REST Client fills these in after you send "generate")
 @productId = {{generate.response.body.$.product.id}}
 @descriptionId = {{generate.response.body.$.descriptions[0].id}}
@@ -62,6 +86,8 @@ GET {{api}}/api/products/00000000-0000-4000-8000-0000000000ff
 #   curl -X POST localhost:4000/api/generations -H 'content-type: application/json' \
 #        -d '{"title":"Stainless steel water bottle 750 ml","category":"Sports"}'
 #   curl "localhost:4000/api/products?limit=5"
+#   curl -X POST localhost:4000/api/generations -F title='Ceramic mug' -F category='Home & Kitchen' -F image=@mug.jpg
 #   curl localhost:4000/api/products/<id>
+#   curl localhost:4000/api/products/<id>/image -o photo.jpg
 #   curl -X PATCH localhost:4000/api/descriptions/<id> -H 'content-type: application/json' \
 #        -d '{"editedContent":"My edit"}'

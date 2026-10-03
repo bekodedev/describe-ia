@@ -153,3 +153,73 @@ describe('rate limit on POST /api/generations', () => {
     for (let i = 0; i < 3; i++) expect((await request(app).get('/api/products')).status).toBe(200);
   });
 });
+
+describe('photo upload validation -> 400', () => {
+  const jpegStart = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  const stub: GenerateFn = async () => {
+    throw new Error('must not be called');
+  };
+  const upload = (file: Buffer, options: { filename?: string; contentType?: string } = {}) =>
+    request(createApp(pool, { generate: stub }))
+      .post('/api/generations')
+      .field('title', valid.title)
+      .field('category', valid.category)
+      .attach('image', file, {
+        filename: options.filename ?? 'photo.jpg',
+        contentType: options.contentType ?? 'image/jpeg',
+      });
+
+  it('rejects a file over 5 MB', async () => {
+    const res = await upload(Buffer.concat([jpegStart, Buffer.alloc(5 * 1024 * 1024)]));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatchObject({ code: 'invalid_image' });
+    expect(res.body.error.message).toContain('5 MB');
+  });
+
+  it('rejects a .txt renamed to .jpg (the bytes are not an image)', async () => {
+    const res = await upload(Buffer.from('this is not a picture'));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatchObject({ code: 'invalid_image' });
+  });
+
+  it('rejects an image type that is not allowed, even with a valid body', async () => {
+    const gif = Buffer.from('GIF89a\u0001\u0000\u0001\u0000');
+    const res = await upload(gif, { filename: 'a.gif', contentType: 'image/gif' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('invalid_image');
+  });
+
+  it('rejects a corrupt image that only has the right first bytes', async () => {
+    const res = await upload(Buffer.concat([jpegStart, Buffer.from('not really a jpeg')]));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('invalid_image');
+  });
+
+  it('rejects two files and files in another field', async () => {
+    const app = createApp(pool, { generate: stub });
+    const two = await request(app)
+      .post('/api/generations')
+      .field('title', valid.title)
+      .field('category', valid.category)
+      .attach('image', jpegStart, { filename: 'a.jpg', contentType: 'image/jpeg' })
+      .attach('image', jpegStart, { filename: 'b.jpg', contentType: 'image/jpeg' });
+    expect(two.status).toBe(400);
+    expect(two.body.error.message).toContain('one file');
+
+    const other = await request(app)
+      .post('/api/generations')
+      .field('title', valid.title)
+      .field('category', valid.category)
+      .attach('photo', jpegStart, { filename: 'a.jpg', contentType: 'image/jpeg' });
+    expect(other.status).toBe(400);
+  });
+
+  it('still validates title and category in a multipart request', async () => {
+    const res = await request(createApp(pool, { generate: stub }))
+      .post('/api/generations')
+      .field('title', 'x')
+      .field('category', 'Cosmetics');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('validation_error');
+  });
+});

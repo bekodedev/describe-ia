@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type pg from 'pg';
+import sharp from 'sharp';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
@@ -7,7 +11,8 @@ import { DEMO_USER_ID } from '../config/demo-user.js';
 import { createTestSchema } from '../db/test-schema.js';
 import { seedDemoUser } from '../db/users.js';
 import type { GenerationResponse } from '@describe-ia/shared';
-import type { LlmResponse } from '../llm/client.js';
+import { createImageStore } from '../images/storage.js';
+import type { CompleteParams, LlmResponse } from '../llm/client.js';
 import { generateDescriptions } from '../generation/service.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -29,21 +34,35 @@ describe.skipIf(!databaseUrl)('REST API (Postgres, stubbed LLM)', () => {
   let answers: string[] = []; // what the stubbed model says next; the last one repeats
   let app: ReturnType<typeof createApp>;
 
-  const complete = async (): Promise<LlmResponse> => ({
-    content: [{ type: 'text', text: answers.length > 1 ? answers.shift()! : answers[0]! }],
-    usage: { inputTokens: 100, outputTokens: 80 },
-    model: 'claude-haiku-4-5-20251001',
-    latencyMs: 5,
-    raw: {},
-  });
+  const requests: CompleteParams[] = []; // what the stubbed model was asked
+  let uploadsDir: string;
+
+  const complete = async (params: CompleteParams): Promise<LlmResponse> => (
+    requests.push(params),
+    {
+      content: [{ type: 'text', text: answers.length > 1 ? answers.shift()! : answers[0]! }],
+      usage: { inputTokens: 100, outputTokens: 80 },
+      model: 'claude-haiku-4-5-20251001',
+      latencyMs: 5,
+      raw: {},
+    }
+  );
 
   beforeAll(async () => {
     ({ pool, drop } = await createTestSchema(databaseUrl!));
     await seedDemoUser(pool);
+    uploadsDir = await mkdtemp(join(tmpdir(), 'describe-ia-uploads-'));
+    const imageStore = createImageStore(uploadsDir);
     app = createApp(pool, {
       generate: (input) =>
-        generateDescriptions(pool, input, { complete, model: 'test-model', language: 'es' }),
+        generateDescriptions(pool, input, {
+          complete,
+          model: 'test-model',
+          language: 'es',
+          imageStore,
+        }),
       rateLimit: { max: 1000, windowMs: 60_000 },
+      imageStore,
     });
   });
   afterAll(() => drop());
@@ -79,7 +98,7 @@ describe.skipIf(!databaseUrl)('REST API (Postgres, stubbed LLM)', () => {
     expect(product).toMatchObject({
       title: 'Stainless steel bottle',
       category: 'Sports',
-      imagePath: null,
+      imageUrl: null,
     });
     expect(new Date(product.createdAt).toISOString()).toBe(product.createdAt);
     expect(descriptions.map((d) => d.variant)).toEqual(['short', 'medium', 'seo']);
@@ -223,5 +242,92 @@ describe.skipIf(!databaseUrl)('REST API (Postgres, stubbed LLM)', () => {
       await pool.query("SELECT count(*)::int AS n FROM llm_calls WHERE status = 'invalid_output'")
     ).rows[0].n;
     expect(after).toBe(invalidCalls + 2);
+  });
+
+  describe('product photo', () => {
+    const photo = (width: number, height: number) =>
+      sharp({ create: { width, height, channels: 3, background: { r: 200, g: 30, b: 30 } } })
+        .png()
+        .toBuffer();
+    const withPhoto = (title: string, image: Buffer) =>
+      request(app)
+        .post('/api/generations')
+        .field('title', title)
+        .field('category', 'Home & Kitchen')
+        .attach('image', image, { filename: 'photo.png', contentType: 'image/png' });
+
+    it('sends a resized JPEG image block before the text, keeps the original and serves it', async () => {
+      answers = [validAnswer];
+      const original = await photo(3000, 2000);
+
+      const res = await withPhoto('Red mug', original);
+
+      expect(res.status).toBe(201);
+      expect(res.body.product.imageUrl).toBe(`/api/products/${res.body.product.id}/image`);
+      expect(res.body.descriptions).toHaveLength(3);
+
+      const content = requests.at(-1)!.messages[0]!.content;
+      if (typeof content === 'string') throw new Error('expected content blocks');
+      expect(content.map((block) => block.type)).toEqual(['image', 'text']);
+      const block = content[0]!;
+      if (block.type !== 'image') throw new Error('expected an image block');
+      expect(block.source.media_type).toBe('image/jpeg');
+      const sent = await sharp(Buffer.from(block.source.data, 'base64')).metadata();
+      expect(sent).toMatchObject({ format: 'jpeg', width: 1024, height: 683 });
+      expect(JSON.stringify(content[1])).toContain('Red mug');
+
+      const files = (await readdir(uploadsDir)).filter((f) => f.endsWith('.png'));
+      expect(files).toHaveLength(1);
+      expect(await readFile(join(uploadsDir, files[0]!))).toEqual(original);
+
+      const image = await request(app).get(res.body.product.imageUrl);
+      expect(image.status).toBe(200);
+      expect(image.headers['content-type']).toBe('image/png');
+      expect(image.headers['cache-control']).toContain('private');
+      expect(image.body).toEqual(original);
+    });
+
+    it('without a photo the model receives plain text, as before', async () => {
+      await generate('Plain product');
+      expect(typeof requests.at(-1)!.messages[0]!.content).toBe('string');
+    });
+
+    it('GET image answers 404 without a photo, for other users’ photos and when the file is gone', async () => {
+      const { product } = await generate('No photo');
+      expect((await request(app).get(`/api/products/${product.id}/image`)).status).toBe(404);
+
+      await writeFile(join(uploadsDir, 'secret.png'), await photo(10, 10));
+      const user = await pool.query(
+        "INSERT INTO users (email, name) VALUES ($1, 'Photo owner') RETURNING id",
+        [`photo-${randomUUID()}@test.local`],
+      );
+      const foreign = await pool.query(
+        "INSERT INTO products (user_id, title, category, image_path) VALUES ($1, 'Foreign', 'Other', 'secret.png') RETURNING id",
+        [user.rows[0].id],
+      );
+      expect((await request(app).get(`/api/products/${foreign.rows[0].id}/image`)).status).toBe(
+        404,
+      );
+
+      const mine = await pool.query(
+        "INSERT INTO products (user_id, title, category, image_path) VALUES ($1, 'Lost photo', 'Other', 'missing.png') RETURNING id",
+        [DEMO_USER_ID],
+      );
+      const lost = await request(app).get(`/api/products/${mine.rows[0].id}/image`);
+      expect(lost.status).toBe(404);
+      expect(lost.body.error.code).toBe('not_found');
+    });
+
+    it('a failed generation leaves no file and no product', async () => {
+      const files = (await readdir(uploadsDir)).length;
+      const products = await count('products');
+      answers = ['not json', 'still not json'];
+
+      const res = await withPhoto('Doomed with photo', await photo(200, 200));
+
+      expect(res.status).toBe(422);
+      expect(await readdir(uploadsDir)).toHaveLength(files);
+      expect(await count('products')).toBe(products);
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { IMAGE_MAX_BYTES } from '@describe-ia/shared';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -6,6 +7,8 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   LLM_MODEL: z.string().min(1),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(IMAGE_MAX_BYTES),
+  UPLOADS_DIR: z.string().min(1).default('uploads'),
   OUTPUT_LANGUAGE: z
     .string()
     .regex(/^[a-z]{2}$/, 'must be a 2-letter ISO 639-1 code such as "es" or "en"')

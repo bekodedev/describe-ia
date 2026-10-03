@@ -1,8 +1,11 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_USER_ID } from '../config/demo-user.js';
 import { createTestSchema } from '../db/test-schema.js';
 import { seedDemoUser } from '../db/users.js';
+import { createImageStore } from '../images/storage.js';
 import type { LlmResponse } from '../llm/client.js';
 import { InvalidOutputError } from './errors.js';
 import { generateDescriptions, type GenerationDeps } from './service.js';
@@ -24,6 +27,7 @@ const depsReturning = (text: string, prompts: string[] = []): GenerationDeps => 
   },
   model: 'claude-haiku-4-5-20251001',
   language: 'es',
+  imageStore: createImageStore(join(tmpdir(), 'describe-ia-test-uploads')),
   promptVersion: 'v1',
 });
 

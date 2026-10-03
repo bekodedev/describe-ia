@@ -23,6 +23,7 @@ export interface AskParams {
   model: string;
   version: PromptVersion;
   prompt: string;
+  imageBase64?: string; // a JPEG; sent before the text, as the vision docs recommend
   complete: (params: CompleteParams) => Promise<LlmResponse>;
 }
 
@@ -31,7 +32,16 @@ export interface AskParams {
 export async function askForDescriptions(db: Db, params: AskParams) {
   const { attempts, parse, jsonSchema } = VERSIONS[params.version];
   const context = { userId: params.userId, model: params.model, promptVersion: params.version };
-  let messages: Message[] = [{ role: 'user', content: params.prompt }];
+  const text = { type: 'text' as const, text: params.prompt };
+  const image = params.imageBase64 && {
+    type: 'image' as const,
+    source: {
+      type: 'base64' as const,
+      media_type: 'image/jpeg' as const,
+      data: params.imageBase64,
+    },
+  };
+  let messages: Message[] = [{ role: 'user', content: image ? [image, text] : params.prompt }];
 
   for (let attempt = 1; ; attempt++) {
     try {

@@ -105,4 +105,25 @@ describe('askForDescriptions (v1)', () => {
     expect(statuses()).toEqual(['invalid_output']);
     expect(model.requests[0]?.jsonSchema).toBeUndefined();
   });
+
+  it('puts the image before the text and keeps it when it retries', async () => {
+    const { db } = fakeDb();
+    const model = fakeModel(missingSeo, valid);
+
+    await askForDescriptions(db, {
+      ...base,
+      version: 'v2',
+      imageBase64: 'QUJD',
+      complete: model.complete,
+    });
+
+    const [first, retry] = model.requests.map((r) => r.messages[0]?.content);
+    for (const content of [first, retry]) {
+      expect(Array.isArray(content) && content.map((b) => b.type)).toEqual(['image', 'text']);
+    }
+    const image = (first as { source: unknown }[])[0];
+    expect(image).toMatchObject({
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+    });
+  });
 });
