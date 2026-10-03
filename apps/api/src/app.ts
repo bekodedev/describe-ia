@@ -12,6 +12,7 @@ import { createDescriptionsRouter } from './routes/descriptions.js';
 import { createGenerationsRouter, type GenerateFn } from './routes/generations.js';
 import { createHealthRouter } from './routes/health.js';
 import { createProductsRouter } from './routes/products.js';
+import { createUsageRouter } from './routes/usage.js';
 
 export interface AppOptions {
   generate?: GenerateFn; // replaced in tests to stub the LLM
@@ -37,6 +38,7 @@ export function createApp(pool: pg.Pool, options: AppOptions = {}): express.Expr
   app.use('/api', createGenerationsRouter(generate, limiter, upload));
   app.use('/api', createProductsRouter(pool, imageStore));
   app.use('/api', createDescriptionsRouter(pool));
+  app.use('/api', createUsageRouter(pool));
 
   app.use(notFound);
   app.use(errorHandler);

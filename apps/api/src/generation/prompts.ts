@@ -11,12 +11,11 @@ export async function loadPrompt(
   name: string,
   version: string,
   dir = defaultDir,
+  allowPrivate = true, // false to measure with the prompt that is in the repository
 ): Promise<{ template: string; source: PromptSource }> {
   const file = `${name}.${version}.md`;
-  const candidates: [PromptSource, string][] = [
-    ['private', join(dir, 'private', file)],
-    ['public', join(dir, file)],
-  ];
+  const candidates: [PromptSource, string][] = [['public', join(dir, file)]];
+  if (allowPrivate) candidates.unshift(['private', join(dir, 'private', file)]);
 
   for (const [source, path] of candidates) {
     try {

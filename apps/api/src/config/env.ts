@@ -6,6 +6,11 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   ANTHROPIC_API_KEY: z.string().min(1),
   LLM_MODEL: z.string().min(1),
+  // Only for models that support it (Sonnet 5.x, Opus...); leave empty for Haiku 4.5.
+  LLM_EFFORT: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['low', 'medium', 'high']).optional(),
+  ),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(IMAGE_MAX_BYTES),
   UPLOADS_DIR: z.string().min(1).default('uploads'),

@@ -41,22 +41,24 @@ docs/                PROJECT.md, ROADMAP.md, DEMO.md
 
 Commands marked TODO do not exist yet; the task that creates them replaces TODO with the real command.
 
-| Purpose           | Command                                                                                               | Status     |
-| ----------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
-| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                                               | done       |
-| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`                                | done       |
-| Test              | `pnpm test` (API + web Playwright)                                                                    | done       |
-| Build             | `pnpm build`                                                                                          | done       |
-| Lint              | `pnpm lint`                                                                                           | done       |
-| Typecheck         | `pnpm typecheck`                                                                                      | done       |
-| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                                                          | done       |
-| New migration     | `pnpm --filter api migrate:create <name>`                                                             | done       |
-| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)                                        | done       |
-| Cost report       | `pnpm --filter api report:cost`                                                                       | TODO (T09) |
-| Try a generation  | `pnpm --filter api gen:try "<title>" "<category>" [v1\|v2] [--image <file>]` (real call, needs a key) | done       |
-| Compare v1 / v2   | `pnpm --filter api gen:compare [--rounds N]` (real calls, writes docs/experiments/t05-v1-vs-v2.md)    | done       |
-| Seed demo user    | `pnpm --filter api seed`                                                                              | done       |
-| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                                                       | TODO (T10) |
+| Purpose           | Command                                                                                                  | Status     |
+| ----------------- | -------------------------------------------------------------------------------------------------------- | ---------- |
+| Start everything  | `docker compose up` (needs `.env`, copy `.env.example`)                                                  | done       |
+| Dev (api / web)   | `pnpm dev` (both) or `pnpm --filter api dev` / `pnpm --filter web dev`                                   | done       |
+| Test              | `pnpm test` (API + web Playwright)                                                                       | done       |
+| Build             | `pnpm build`                                                                                             | done       |
+| Lint              | `pnpm lint`                                                                                              | done       |
+| Typecheck         | `pnpm typecheck`                                                                                         | done       |
+| Migrate up / down | `pnpm --filter api migrate` / `migrate:down`                                                             | done       |
+| New migration     | `pnpm --filter api migrate:create <name>`                                                                | done       |
+| LLM ping          | `pnpm --filter api llm:ping` (one real call, needs a real key)                                           | done       |
+| Cost report       | `pnpm --filter api cost:report [--since <date>]` (reads llm_calls, writes docs/experiments/t09-costs.md) | done       |
+| Cost sample       | `pnpm --filter api cost:sample --count 40 --photos <folder>` (real calls, public prompt)                 | done       |
+| Model comparison  | `pnpm --filter api cost:compare` (real calls, writes docs/experiments/t09-model-comparison.md)           | done       |
+| Try a generation  | `pnpm --filter api gen:try "<title>" "<category>" [v1\|v2] [--image <file>]` (real call, needs a key)    | done       |
+| Compare v1 / v2   | `pnpm --filter api gen:compare [--rounds N]` (real calls, writes docs/experiments/t05-v1-vs-v2.md)       | done       |
+| Seed demo user    | `pnpm --filter api seed`                                                                                 | done       |
+| Seed demo data    | `pnpm --filter api seed:demo` (sample products)                                                          | TODO (T10) |
 
 ## Working rules
 
@@ -68,6 +70,7 @@ Commands marked TODO do not exist yet; the task that creates them replaces TODO 
   4. A conventional commit is made: `feat(Txx): <short description>` (use `fix`, `docs`, `chore`, `test` where they fit better).
 - Automated tests never call the real Anthropic API; stub `fetch`.
 - Database integration tests run the real migrations in a throwaway schema and need `DATABASE_URL` (from `.env`) plus a running Postgres (`docker compose up -d postgres`); they are skipped when it is unset.
+- `llm_calls.prompt_version` is a label of the prompt really used (`v2`, `v2-private`, `v2-compare`, `v1`); cost figures are only comparable inside one label and one model.
 - Every LLM call, including failures, is recorded in `llm_calls` (use `recordLlmCall`, which also stores the cost from `src/llm/pricing.ts`).
 - Scripts that call the API from Node on a machine with TLS inspection need `--use-system-ca` (see `llm:ping`, `dev`); without it `fetch` fails with `SELF_SIGNED_CERT_IN_CHAIN`. Inside the Docker container the host's certificates are not available, so on such a machine run the API locally (`pnpm --filter api dev`) or mount the CA and set `NODE_EXTRA_CA_CERTS`.
 - The web tests (`pnpm --filter web test`) start their own Next.js server on port 3100 and mock every `/api` call, so they need no API or database. First time on a machine: `pnpm --filter web exec playwright install chromium` (behind TLS inspection prefix it with `NODE_OPTIONS=--use-system-ca`).

@@ -13,6 +13,7 @@ describe('loadEnv', () => {
     expect(env.OUTPUT_LANGUAGE).toBe('es');
     expect(env.PORT).toBe(4000);
     expect(env.LLM_TIMEOUT_MS).toBe(30_000);
+    expect(env.LLM_EFFORT).toBeUndefined();
   });
 
   it('names the missing variable', () => {
@@ -23,5 +24,11 @@ describe('loadEnv', () => {
 
   it('rejects a language that is not a 2-letter code', () => {
     expect(() => loadEnv({ ...valid, OUTPUT_LANGUAGE: 'english' })).toThrow(/OUTPUT_LANGUAGE/);
+  });
+
+  it('reads LLM_EFFORT, treats an empty value as not set and rejects unknown levels', () => {
+    expect(loadEnv({ ...valid, LLM_EFFORT: 'low' }).LLM_EFFORT).toBe('low');
+    expect(loadEnv({ ...valid, LLM_EFFORT: '' }).LLM_EFFORT).toBeUndefined();
+    expect(() => loadEnv({ ...valid, LLM_EFFORT: 'extreme' })).toThrow(/LLM_EFFORT/);
   });
 });

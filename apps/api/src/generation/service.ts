@@ -26,6 +26,8 @@ export interface GenerationDeps {
   language: string; // ISO 639-1 code, e.g. "es"
   imageStore: ImageStore;
   promptVersion?: PromptVersion; // v2 unless an experiment asks for v1
+  allowPrivatePrompts?: boolean; // default true; false = only the prompts in the repository
+  promptLabel?: string; // overrides what llm_calls.prompt_version stores
 }
 
 export function defaultDeps(): GenerationDeps {
@@ -42,25 +44,42 @@ export function defaultDeps(): GenerationDeps {
 const languageName = (code: string) =>
   new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code;
 
-export async function generateDescriptions(
-  pool: pg.Pool,
-  input: GenerationInput,
-  deps: GenerationDeps = defaultDeps(),
-): Promise<{ product: Product; descriptions: Description[]; rawText: string }> {
+// Loads the prompt and fills in the product. The label says which prompt was really used: a private
+// prompt is stored as "v2-private", so costs measured with it never mix with the public ones.
+export async function buildPrompt(
+  input: Pick<GenerationInput, 'title' | 'category'>,
+  deps: Pick<GenerationDeps, 'language' | 'promptVersion' | 'allowPrivatePrompts' | 'promptLabel'>,
+) {
   const version = deps.promptVersion ?? 'v2';
-  const { template, source } = await loadPrompt(PROMPT_NAME, version);
+  const { template, source } = await loadPrompt(
+    PROMPT_NAME,
+    version,
+    undefined,
+    deps.allowPrivatePrompts ?? true,
+  );
   console.log(`Using ${source} prompt ${PROMPT_NAME}.${version}`);
   const prompt = renderPrompt(template, {
     title: input.title,
     category: input.category,
     language: languageName(deps.language),
   });
+  const label = deps.promptLabel ?? (source === 'private' ? `${version}-private` : version);
+  return { prompt, version, label };
+}
+
+export async function generateDescriptions(
+  pool: pg.Pool,
+  input: GenerationInput,
+  deps: GenerationDeps = defaultDeps(),
+): Promise<{ product: Product; descriptions: Description[]; rawText: string }> {
+  const { prompt, version, label } = await buildPrompt(input, deps);
 
   // Every attempt is recorded, valid or not. Throws InvalidOutputError (422) if the model never complies.
   const { variants, callId, rawText } = await askForDescriptions(pool, {
     userId: input.userId,
     model: deps.model,
     version,
+    promptLabel: label,
     prompt,
     imageBase64: input.image?.base64,
     complete: deps.complete,

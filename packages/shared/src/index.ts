@@ -65,6 +65,16 @@ export interface ProductListResponse {
   nextCursor: string | null;
 }
 
+// GET /api/usage: what the AI calls of one month cost (UTC months).
+export interface UsageResponse {
+  month: string; // "YYYY-MM"
+  calls: number;
+  generations: number;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface ErrorResponse {
   error: {
     code: string;

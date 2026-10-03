@@ -330,4 +330,54 @@ describe.skipIf(!databaseUrl)('REST API (Postgres, stubbed LLM)', () => {
       expect(await count('products')).toBe(products);
     });
   });
+
+  describe('usage', () => {
+    const insertCall = (userId: string, createdAt: string, status: string, cost: number | null) =>
+      pool.query(
+        `INSERT INTO llm_calls (user_id, model, prompt_version, input_tokens, output_tokens,
+           cost_usd, latency_ms, status, created_at)
+         VALUES ($1, 'test-model', 'v2', 100, 50, $2, 10, $3, $4)`,
+        [userId, cost, status, createdAt],
+      );
+
+    it('GET /api/usage?month adds up the demo user’s calls of that UTC month, failures included', async () => {
+      const other = await pool.query(
+        "INSERT INTO users (email, name) VALUES ($1, 'Someone else') RETURNING id",
+        [`usage-${randomUUID()}@test.local`],
+      );
+      await insertCall(DEMO_USER_ID, '2031-05-01 00:00:00+00', 'ok', 0.002); // first instant of the month
+      await insertCall(DEMO_USER_ID, '2031-05-20 12:00:00+00', 'invalid_output', 0.001);
+      await insertCall(DEMO_USER_ID, '2031-05-31 23:59:59+00', 'error', null);
+      await insertCall(DEMO_USER_ID, '2031-04-30 23:59:59+00', 'ok', 1); // the month before
+      await insertCall(DEMO_USER_ID, '2031-06-01 00:00:00+00', 'ok', 1); // the month after
+      await insertCall(other.rows[0].id, '2031-05-10 10:00:00+00', 'ok', 5); // another user
+
+      const res = await request(app).get('/api/usage').query({ month: '2031-05' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        month: '2031-05',
+        calls: 3,
+        generations: 1,
+        costUsd: 0.003,
+        inputTokens: 300,
+        outputTokens: 150,
+      });
+    });
+
+    it('defaults to the current month and is zero when nothing was spent', async () => {
+      const res = await request(app).get('/api/usage').query({ month: '2031-07' });
+      expect(res.body).toMatchObject({ month: '2031-07', calls: 0, costUsd: 0 });
+
+      const now = await request(app).get('/api/usage');
+      expect(now.status).toBe(200);
+      expect(now.body.month).toBe(new Date().toISOString().slice(0, 7));
+    });
+
+    it('rejects a month that is not YYYY-MM', async () => {
+      for (const month of ['2031-13', '2031-5', 'may', '2031-05-01']) {
+        expect((await request(app).get('/api/usage').query({ month })).status).toBe(400);
+      }
+    });
+  });
 });

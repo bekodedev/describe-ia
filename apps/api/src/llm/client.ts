@@ -56,21 +56,18 @@ export interface ClientOptions {
   timeoutMs: number;
   fetch: typeof fetch;
   sleep: (ms: number) => Promise<void>;
+  // How much a model that thinks may think (output_config.effort). Not every model accepts it.
+  effort?: 'low' | 'medium' | 'high';
 }
+
+const knownBlock = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('tool_use'), id: z.string(), name: z.string(), input: z.unknown() }),
+]);
 
 const responseSchema = z.object({
   model: z.string(),
-  content: z.array(
-    z.discriminatedUnion('type', [
-      z.object({ type: z.literal('text'), text: z.string() }),
-      z.object({
-        type: z.literal('tool_use'),
-        id: z.string(),
-        name: z.string(),
-        input: z.unknown(),
-      }),
-    ]),
-  ),
+  content: z.array(z.looseObject({ type: z.string() })),
   usage: z.object({ input_tokens: z.number(), output_tokens: z.number() }),
 });
 
@@ -86,6 +83,9 @@ export async function complete(
     timeoutMs: overrides.timeoutMs ?? env().LLM_TIMEOUT_MS,
     fetch: overrides.fetch ?? fetch,
     sleep: overrides.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+    // The effort in .env belongs to the model in .env: another model gets none unless it is passed.
+    effort:
+      'effort' in overrides ? overrides.effort : overrides.model ? undefined : env().LLM_EFFORT,
   };
 
   const startedAt = Date.now();
@@ -122,9 +122,7 @@ async function send(params: CompleteParams, options: ClientOptions): Promise<Res
         messages: params.messages,
         tools: params.tools,
         tool_choice: params.toolChoice,
-        output_config: params.jsonSchema && {
-          format: { type: 'json_schema', schema: params.jsonSchema },
-        },
+        output_config: outputConfig(params, options),
       }),
       signal: controller.signal,
     });
@@ -138,6 +136,14 @@ async function send(params: CompleteParams, options: ClientOptions): Promise<Res
   } finally {
     clearTimeout(timer);
   }
+}
+
+function outputConfig(params: CompleteParams, options: ClientOptions) {
+  const config = {
+    ...(params.jsonSchema && { format: { type: 'json_schema', schema: params.jsonSchema } }),
+    ...(options.effort && { effort: options.effort }),
+  };
+  return Object.keys(config).length > 0 ? config : undefined;
 }
 
 const isRetryable = (status: number) => status === 429 || status === 529 || status >= 500;
@@ -166,7 +172,17 @@ function retryAfterSeconds(response: Response): number | undefined {
 function parse(raw: unknown, latencyMs: number): LlmResponse {
   const result = responseSchema.safeParse(raw);
   if (!result.success) throw new LlmUpstreamError('Unexpected response shape from the LLM API');
-  const { content, model, usage } = result.data;
+  const { model, usage } = result.data;
+
+  // Larger models may also send blocks of their own (their thinking, billed as output tokens).
+  // Those are kept in `raw`; the rest of the app only gets the text and tool calls.
+  const content: ContentBlock[] = [];
+  for (const block of result.data.content) {
+    if (block.type !== 'text' && block.type !== 'tool_use') continue;
+    const known = knownBlock.safeParse(block);
+    if (!known.success) throw new LlmUpstreamError('Unexpected content block from the LLM API');
+    content.push(known.data);
+  }
   return {
     content,
     model,

@@ -3,8 +3,10 @@ export interface Usage {
   outputTokens: number;
 }
 
+export const PRICES_CHECKED = '2026-10-03';
+
 // USD per million tokens, standard (non-batch, non-cached) rates.
-// Source: https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-10-01).
+// Source: https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-10-03, unchanged since 2026-10-01).
 // Update this table (and the date) whenever the provider changes its prices.
 const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5-20251001': { input: 1, output: 5 },

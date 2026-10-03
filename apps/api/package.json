@@ -15,7 +15,10 @@
     "seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
     "llm:ping": "tsx --use-system-ca --env-file-if-exists=../../.env src/llm/ping.ts",
     "gen:try": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/try.ts",
-    "gen:compare": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/compare.ts"
+    "gen:compare": "tsx --use-system-ca --env-file-if-exists=../../.env src/generation/compare.ts",
+    "cost:report": "tsx --use-system-ca --env-file-if-exists=../../.env src/cost/report-cli.ts",
+    "cost:sample": "tsx --use-system-ca --env-file-if-exists=../../.env src/cost/sample.ts",
+    "cost:compare": "tsx --use-system-ca --env-file-if-exists=../../.env src/cost/compare-models.ts"
   },
   "dependencies": {
     "@describe-ia/shared": "workspace:*",

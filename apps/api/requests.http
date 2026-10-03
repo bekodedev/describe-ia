@@ -62,6 +62,12 @@ Content-Type: application/json
   "editedContent": "My own version of this description."
 }
 
+### What the AI calls cost this month (UTC): { month, calls, generations, costUsd, inputTokens, outputTokens }
+GET {{api}}/api/usage
+
+### Another month
+GET {{api}}/api/usage?month=2026-09
+
 ### --- Errors (all have the shape { error: { code, message, details?, requestId } }) ---
 
 ### 400 validation_error: title too short and category outside the list

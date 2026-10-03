@@ -62,3 +62,35 @@ export async function insertLlmCall(db: Db, call: NewLlmCall): Promise<LlmCall> 
   );
   return rows[0]!;
 }
+
+export interface MonthlyUsage {
+  calls: number;
+  generations: number; // calls that produced a valid answer
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+// `month` is "YYYY-MM", in UTC. Failed calls are included: they cost money too.
+export async function monthlyUsage(db: Db, userId: string, month: string): Promise<MonthlyUsage> {
+  const { rows } = await db.query<Record<keyof MonthlyUsage, string>>(
+    `SELECT count(*) AS calls,
+            count(*) FILTER (WHERE status = 'ok') AS generations,
+            coalesce(sum(cost_usd), 0) AS "costUsd",
+            coalesce(sum(input_tokens), 0) AS "inputTokens",
+            coalesce(sum(output_tokens), 0) AS "outputTokens"
+     FROM llm_calls
+     WHERE user_id = $1
+       AND created_at >= ($2 || '-01')::timestamp AT TIME ZONE 'UTC'
+       AND created_at < (($2 || '-01')::timestamp + interval '1 month') AT TIME ZONE 'UTC'`,
+    [userId, month],
+  );
+  const row = rows[0]!;
+  return {
+    calls: Number(row.calls),
+    generations: Number(row.generations),
+    costUsd: Number(row.costUsd),
+    inputTokens: Number(row.inputTokens),
+    outputTokens: Number(row.outputTokens),
+  };
+}

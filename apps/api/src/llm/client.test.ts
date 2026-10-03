@@ -72,6 +72,28 @@ describe('complete', () => {
     });
   });
 
+  it('sends the effort next to the schema, and sends nothing when there is neither', async () => {
+    const both = setup(ok());
+    await complete(
+      { ...params, jsonSchema: { type: 'object' } },
+      { ...both.options, effort: 'low' },
+    );
+    const bodyOf = (mock: typeof both.fetchMock) =>
+      JSON.parse((mock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(bodyOf(both.fetchMock).output_config).toEqual({
+      format: { type: 'json_schema', schema: { type: 'object' } },
+      effort: 'low',
+    });
+
+    const effortOnly = setup(ok());
+    await complete(params, { ...effortOnly.options, effort: 'medium' });
+    expect(bodyOf(effortOnly.fetchMock).output_config).toEqual({ effort: 'medium' });
+
+    const none = setup(ok());
+    await complete(params, none.options);
+    expect(bodyOf(none.fetchMock)).not.toHaveProperty('output_config');
+  });
+
   it('retries a 429 after the retry-after delay', async () => {
     const { fetchMock, sleep, options } = setup(failure(429, { 'retry-after': '2' }), ok());
     await complete(params, options);
@@ -130,6 +152,27 @@ describe('complete', () => {
     const { fetchMock, options } = setup(new TypeError('fetch failed'));
     await expect(complete(params, options)).rejects.toThrow(LlmUpstreamError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores content blocks it does not use, such as the thinking of larger models', async () => {
+    const body = {
+      ...okBody,
+      content: [
+        { type: 'thinking', thinking: 'let me think', signature: 'abc' },
+        ...okBody.content,
+      ],
+    };
+    const { options } = setup(Response.json(body));
+
+    const response = await complete(params, options);
+
+    expect(response.content).toEqual([{ type: 'text', text: 'pong' }]);
+    expect(response.raw).toEqual(body); // nothing is lost
+  });
+
+  it('rejects a text block that has no text', async () => {
+    const { options } = setup(Response.json({ ...okBody, content: [{ type: 'text' }] }));
+    await expect(complete(params, options)).rejects.toThrow(/Unexpected content block/);
   });
 
   it('rejects a 200 with an unexpected body', async () => {

@@ -39,7 +39,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T06 | API endpoints (generate, list, view, edit description)          | T02, T05      | 4        | [x]    |
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [x]    |
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [x]    |
-| T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [ ]    |
+| T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [x]    |
 | T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [ ]    |
 | T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [ ]    |
 
@@ -264,25 +264,26 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ---
 
-## T09 — Cost tracking and a "cost per description / cost per 1,000" report
+## T09 — Cost tracking, cost report and usage endpoint
 
-**Goal.** Turn recorded token usage into money and report what a description really costs.
+**Goal.** Answer with real data "how much does one description cost?", "and 1,000?" and "what price would have to be charged?".
 
 **Deliverables.**
 
-- Re-check `src/llm/pricing.ts` against the official pricing page (prices and date) and make sure it covers both the development and the production model. The cost itself is already stored in `llm_calls.cost_usd` by T03; an unknown model keeps `cost_usd` null.
-- `GET /api/reports/cost` returning: total calls, successful and failed calls, total cost, cost per successful generation, cost per description (3 per generation), projected cost per 1,000 descriptions, average latency, and the cost wasted on failed/invalid calls.
-- A `/costs` page in the web app showing those figures, linked from the header.
-- `pnpm --filter api report:cost` prints the same report in the terminal.
+- `src/llm/pricing.ts` re-checked against the official pricing page (prices unchanged) with its date updated.
+- `pnpm --filter api cost:report` reads `llm_calls` and writes `docs/experiments/t09-costs.md`: average, p50 and p95 cost per generation without and with a photo; average input and output tokens; the retry rate and what retries cost; the projection for 1,000 and 10,000 generations; the comparison of two models; and an "Indicative pricing" section with 3 scenarios (100, 1,000 and 5,000 products a month) at a target margin of 80%, clearly marked as an estimate.
+- `pnpm --filter api cost:sample` makes real generations (half of them with a photo, public prompt) to have data to measure; `pnpm --filter api cost:compare` runs the same 10 products with the cheap and a higher-tier model (`model:effort` settings) and writes `docs/experiments/t09-model-comparison.md` with empty 1-5 quality columns to fill in by hand.
+- `llm_calls.prompt_version` now says which prompt was really used: a private prompt is stored as `v2-private`, so its cost (many more input tokens) never mixes with the public one.
+- `LLM_EFFORT` (optional) is sent as `output_config.effort`. Found by the model comparison: Sonnet 5.5 at its default effort spends the whole `max_tokens` thinking and returns no text (20 calls, $0.33, no valid answer); with the effort low it answers in 5.9 s at x3.35 the cost of Haiku. The client also ignores response blocks it does not use (thinking).
+- `GET /api/usage` (optional `?month=YYYY-MM`): the demo user's calls, valid generations, cost and tokens of a UTC month, failed calls included. Billing will read it later.
 
 **Acceptance criteria.**
 
-- Unit tests: known token counts and prices give the exact expected cost; unknown model gives null.
-- After 3 generations, `curl $API/api/reports/cost` returns totals consistent with `SELECT sum(cost_usd) FROM llm_calls` and `cost_per_1000_descriptions = cost_per_description * 1000`.
-- The `/costs` page shows the same numbers as the endpoint.
-- Failed calls are counted in the total cost but not in the per-description denominators.
+- The report is generated from at least 30 real `llm_calls`.
+- Unit tests for the percentile calculation, the projection, the indicative price and the report; endpoint tests for `/api/usage` (month boundaries, other users, failed calls, bad input).
+- `pnpm lint`, `pnpm typecheck` and `pnpm test` pass.
 
-**Out of scope.** Charts, date filters, per-user breakdown, budget alerts, currency conversion, billing.
+**Out of scope.** Stripe and real billing, a cost page in the web app, charts, budget alerts, currency conversion.
 
 ---
 

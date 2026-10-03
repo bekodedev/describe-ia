@@ -22,6 +22,7 @@ export interface AskParams {
   userId: string;
   model: string;
   version: PromptVersion;
+  promptLabel?: string; // stored in llm_calls.prompt_version; defaults to the version
   prompt: string;
   imageBase64?: string; // a JPEG; sent before the text, as the vision docs recommend
   complete: (params: CompleteParams) => Promise<LlmResponse>;
@@ -31,7 +32,11 @@ export interface AskParams {
 // invalid it is retried once, telling the model what was wrong. Still invalid -> InvalidOutputError (422).
 export async function askForDescriptions(db: Db, params: AskParams) {
   const { attempts, parse, jsonSchema } = VERSIONS[params.version];
-  const context = { userId: params.userId, model: params.model, promptVersion: params.version };
+  const context = {
+    userId: params.userId,
+    model: params.model,
+    promptVersion: params.promptLabel ?? params.version,
+  };
   const text = { type: 'text' as const, text: params.prompt };
   const image = params.imageBase64 && {
     type: 'image' as const,

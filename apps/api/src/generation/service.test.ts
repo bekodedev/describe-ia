@@ -99,7 +99,11 @@ describe.skipIf(!databaseUrl)('generateDescriptions (Postgres, stubbed LLM)', ()
         3,
       ),
     });
-    const v2Deps = { ...depsReturning(json), promptVersion: undefined }; // undefined = the default (v2)
+    const v2Deps = {
+      ...depsReturning(json),
+      promptVersion: undefined,
+      allowPrivatePrompts: false,
+    }; // undefined = the default (v2)
 
     const result = await generateDescriptions(
       pool,
