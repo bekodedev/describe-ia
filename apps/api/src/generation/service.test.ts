@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type pg from 'pg';
@@ -6,6 +8,7 @@ import { DEMO_USER_ID } from '../config/demo-user.js';
 import { createTestSchema } from '../db/test-schema.js';
 import { seedDemoUser } from '../db/users.js';
 import { createImageStore } from '../images/storage.js';
+import { createFakeComplete, FAKE_MODEL } from '../llm/fake.js';
 import type { LlmResponse } from '../llm/client.js';
 import { InvalidOutputError } from './errors.js';
 import { generateDescriptions, type GenerationDeps } from './service.js';
@@ -117,5 +120,48 @@ describe.skipIf(!databaseUrl)('generateDescriptions (Postgres, stubbed LLM)', ()
       [result.product.id],
     );
     expect(rows).toEqual([{ prompt_version: 'v2' }]);
+  });
+
+  it('removes the stored photo when the database refuses the product', async () => {
+    const store = createImageStore(await mkdtemp(join(tmpdir(), 'orphans-')));
+    const image = {
+      original: Buffer.from('png bytes'),
+      originalType: 'image/png' as const,
+      base64: 'QUJD',
+    };
+    const text = 'SHORT: one\nMEDIUM: two\nSEO: three';
+
+    // A user that does not exist: the transaction fails after the file was written.
+    await expect(
+      generateDescriptions(
+        pool,
+        { userId: randomUUID(), title: 'Orphan', category: 'Toys', image },
+        { ...depsReturning(text), imageStore: store },
+      ),
+    ).rejects.toThrow(/foreign key|violates/i);
+
+    expect(await readdir(store.dir)).toEqual([]);
+  });
+
+  it('works end to end with the fake model: valid descriptions, model "fake", no cost', async () => {
+    const result = await generateDescriptions(
+      pool,
+      { userId: DEMO_USER_ID, title: 'Fake mug', category: 'Home & Kitchen' },
+      {
+        complete: createFakeComplete('es'),
+        model: FAKE_MODEL,
+        language: 'es',
+        imageStore: createImageStore(join(tmpdir(), 'describe-ia-test-uploads')),
+        allowPrivatePrompts: false,
+      },
+    );
+
+    expect(result.descriptions.map((d) => d.variant)).toEqual(['short', 'medium', 'seo']);
+    expect(result.descriptions[0]?.content).toContain('Fake mug');
+    const { rows } = await pool.query(
+      'SELECT model, cost_usd, prompt_version, status FROM llm_calls WHERE product_id = $1',
+      [result.product.id],
+    );
+    expect(rows).toEqual([{ model: 'fake', cost_usd: null, prompt_version: 'v2', status: 'ok' }]);
   });
 });

@@ -1,0 +1,73 @@
+name: CI
+
+# On every push and pull request. No job needs a secret: the tests never call a real model, and the
+# end-to-end job runs the whole stack with the deterministic fake model (LLM_FAKE=1).
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: describeia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d describeia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/describeia
+      LLM_MODEL: claude-haiku-4-5-20251001
+      LLM_FAKE: '1' # lets the configuration load without an API key; no test calls a model
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm exec prettier --check .
+      - run: pnpm typecheck
+      # API unit and integration tests (real Postgres, throwaway schemas) with the 80% coverage gate
+      - run: pnpm --filter api test:coverage
+      # Web tests: Playwright with every /api call mocked
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: pnpm --filter web test
+      - run: pnpm build
+
+  e2e:
+    name: End-to-end (Docker Compose, fake model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: cp .env.example .env
+      # Builds and starts postgres + api + web, seeds the demo products, runs the browser tests
+      # against the real stack and tears everything down (see scripts/e2e.mjs)
+      - run: pnpm test:e2e

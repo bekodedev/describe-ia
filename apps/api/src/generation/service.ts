@@ -7,6 +7,7 @@ import { linkLlmCallToProduct } from '../db/llm-calls.js';
 import { withTransaction } from '../db/pool.js';
 import { createProduct, type Product } from '../db/products.js';
 import { complete, type CompleteParams, type LlmResponse } from '../llm/client.js';
+import { createFakeComplete, FAKE_MODEL } from '../llm/fake.js';
 import { askForDescriptions, type PromptVersion } from './ask.js';
 import { loadPrompt, renderPrompt } from './prompts.js';
 
@@ -28,13 +29,14 @@ export interface GenerationDeps {
   promptVersion?: PromptVersion; // v2 unless an experiment asks for v1
   allowPrivatePrompts?: boolean; // default true; false = only the prompts in the repository
   promptLabel?: string; // overrides what llm_calls.prompt_version stores
+  promptsDir?: string; // where the prompt files are; tests point it at a temporary folder
 }
 
 export function defaultDeps(): GenerationDeps {
   const env = loadEnv();
   return {
-    complete: (params) => complete(params),
-    model: env.LLM_MODEL,
+    complete: env.LLM_FAKE ? createFakeComplete(env.OUTPUT_LANGUAGE) : (params) => complete(params),
+    model: env.LLM_FAKE ? FAKE_MODEL : env.LLM_MODEL,
     language: env.OUTPUT_LANGUAGE,
     imageStore: createImageStore(env.UPLOADS_DIR),
   };
@@ -48,13 +50,16 @@ const languageName = (code: string) =>
 // prompt is stored as "v2-private", so costs measured with it never mix with the public ones.
 export async function buildPrompt(
   input: Pick<GenerationInput, 'title' | 'category'>,
-  deps: Pick<GenerationDeps, 'language' | 'promptVersion' | 'allowPrivatePrompts' | 'promptLabel'>,
+  deps: Pick<
+    GenerationDeps,
+    'language' | 'promptVersion' | 'allowPrivatePrompts' | 'promptLabel' | 'promptsDir'
+  >,
 ) {
   const version = deps.promptVersion ?? 'v2';
   const { template, source } = await loadPrompt(
     PROMPT_NAME,
     version,
-    undefined,
+    deps.promptsDir,
     deps.allowPrivatePrompts ?? true,
   );
   console.log(`Using ${source} prompt ${PROMPT_NAME}.${version}`);

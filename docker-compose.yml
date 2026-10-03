@@ -23,6 +23,8 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-describeia}
       UPLOADS_DIR: /data/uploads
+      # LLM_FAKE=1 docker compose up: no model, no key (also what the end-to-end test uses)
+      LLM_FAKE: ${LLM_FAKE:-}
     ports:
       - '${PORT:-4000}:${PORT:-4000}'
     volumes:
@@ -33,6 +35,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:${PORT:-4000}/health']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
 
   web:
     build:
@@ -46,7 +54,16 @@ services:
     volumes:
       - ./apps/web/src:/repo/apps/web/src
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: in Alpine "localhost" is tried as ::1 first and Next.js listens on IPv4 only.
+      # The first request makes Next.js compile the page: give it time.
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/']
+      interval: 5s
+      timeout: 30s
+      retries: 30
+      start_period: 20s
 
 volumes:
   postgres_data:

@@ -31,4 +31,12 @@ describe('loadEnv', () => {
     expect(loadEnv({ ...valid, LLM_EFFORT: '' }).LLM_EFFORT).toBeUndefined();
     expect(() => loadEnv({ ...valid, LLM_EFFORT: 'extreme' })).toThrow(/LLM_EFFORT/);
   });
+
+  it('needs no API key when the model is fake, and says so when it is not', () => {
+    const withoutKey = { DATABASE_URL: valid.DATABASE_URL, LLM_MODEL: valid.LLM_MODEL };
+    expect(loadEnv({ ...withoutKey, LLM_FAKE: '1' }).LLM_FAKE).toBe(true);
+    expect(loadEnv({ ...withoutKey, LLM_FAKE: 'true' }).LLM_FAKE).toBe(true);
+    expect(() => loadEnv({ ...withoutKey, LLM_FAKE: '' })).toThrow(/ANTHROPIC_API_KEY: is missing/);
+    expect(loadEnv(valid).LLM_FAKE).toBe(false);
+  });
 });

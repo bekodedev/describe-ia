@@ -40,7 +40,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T07 | Optional photo: upload, validation, multimodal request          | T06           | 4        | [x]    |
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [x]    |
 | T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [x]    |
-| T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [ ]    |
+| T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [x]    |
 | T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [ ]    |
 
 Total: about 42 hours.
@@ -287,26 +287,26 @@ The base order and scope are kept: no task is merged, split or reordered. Four p
 
 ---
 
-## T10 — Tests, demo data and an end-to-end demo walkthrough
+## T10 — Tests, fake model, demo seed, demo walkthrough and CI
 
-**Goal.** Close quality gaps with cross-cutting tests, deterministic demo data and a documented walkthrough that anyone can follow.
+**Goal.** Guarantee that the demo works on the first try and that the repository inspires confidence.
 
 **Deliverables.**
 
-- Coverage review: missing unit/integration tests for services, repositories and routes, run against a real Postgres (the compose one or a test database).
-- One end-to-end test of the full API flow (generate → list → view → edit → report) with the LLM stubbed.
-- `pnpm --filter api seed:demo`: creates about 10 sample products (with and without photo, several categories) through the real service, so it needs the API key; plus a fixtures option that inserts pre-written descriptions with no LLM calls.
-- Sample images under `apps/api/demo/images/` (royalty-free or generated, with license note).
-- `docs/DEMO.md`: step-by-step walkthrough from clean clone to seeing the cost report, with expected outputs.
+- Coverage review of `apps/api` with a gate: at least 80% (lines, statements, functions and branches) in `src/generation` and `src/llm` (`pnpm --filter api test:coverage`). New tests for the service (photo cleanup when the database refuses the product, fake mode end to end), the prompt loader and the prompt labels (private vs public), the pool and its transactions, the LLM client (real waiting for `retry-after`), the environment and the demo data. The error middleware already had a test per mapping.
+- A deterministic fake model, `LLM_FAKE=1` (`src/llm/fake.ts`): plausible descriptions in `OUTPUT_LANGUAGE` (es, en and fr; English for any other language), valid against the same schema as real answers, recorded in `llm_calls` as model `fake` with no cost. It needs no API key. Documented in `.env.example`; the API says so loudly when it starts in this mode.
+- An end-to-end test of the real stack (`pnpm test:e2e`): Docker Compose (own project, own volumes) with `LLM_FAKE=1`, the demo seed, and Playwright tests that generate with and without a photo, copy, edit, reload, find the product in the history and check `GET /api/usage`; plus a real API rejection shown in the page. `docker-compose.yml` gains healthchecks for `api` and `web` so `docker compose up --wait` knows when the stack is ready.
+- `pnpm --filter api seed:demo`: five realistic, already generated products (two with photos), in Spanish or English according to `OUTPUT_LANGUAGE`, inserted without calling a model; safe to run twice. Two royalty-free demo photos with their licences in `apps/api/demo/photos/`.
+- `docs/demo.md`: the demo step by step (what to enter, which photo, what to point out on each card) and a plan B table for when something fails live.
+- GitHub Actions (`.github/workflows/ci.yml`) on every push and pull request: lint, prettier, typecheck, API tests with coverage against a Postgres service, web Playwright tests, build; and a second job with the Compose end-to-end test using the fake model.
 
 **Acceptance criteria.**
 
-- `pnpm test` passes in a clean environment with no API key set.
-- `pnpm --filter api seed:demo --fixtures` populates history without any LLM call (`llm_calls` unchanged).
-- Following `docs/DEMO.md` literally on a clean clone produces the outcomes it describes.
+- `pnpm test`, `pnpm test:e2e` and the coverage gate pass; the workflow file is valid and its commands run locally.
+- Following `docs/demo.md` from a clean clone works in under 5 minutes (measured with the fake model).
 - `pnpm lint` and `pnpm typecheck` pass.
 
-**Out of scope.** Browser automation frameworks, load testing, CI setup beyond a simple workflow file if wanted.
+**Out of scope.** New features, load testing.
 
 ---
 

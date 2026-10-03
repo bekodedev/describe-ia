@@ -9,6 +9,8 @@ function main(): void {
     imageStore: createImageStore(env.UPLOADS_DIR),
     maxImageBytes: env.MAX_IMAGE_BYTES,
   });
+  if (env.LLM_FAKE)
+    console.warn('LLM_FAKE=1: descriptions are made up locally, no model is called');
   app.listen(env.PORT, () => console.log(`API listening on port ${env.PORT}`));
 }
 

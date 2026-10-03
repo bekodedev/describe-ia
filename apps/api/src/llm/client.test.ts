@@ -112,6 +112,24 @@ describe('complete', () => {
     expect((error as LlmRateLimitError).retryAfterSeconds).toBe(4);
   });
 
+  it('really waits for retry-after when no sleep is injected', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchMock, options } = setup(failure(429, { 'retry-after': '2' }), ok());
+      const { apiKey, model, timeoutMs, fetch } = options; // everything but `sleep`
+      const withRealSleep = { apiKey, model, timeoutMs, fetch };
+
+      const pending = complete(params, withRealSleep);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(fetchMock).toHaveBeenCalledTimes(1); // still waiting
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await pending).usage.inputTokens).toBe(12);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not retry a 400', async () => {
     const { fetchMock, sleep, options } = setup(failure(400));
     await expect(complete(params, options)).rejects.toThrow(LlmBadRequestError);

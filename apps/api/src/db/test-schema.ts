@@ -13,6 +13,7 @@ export async function createTestSchema(databaseUrl: string) {
     migrationsTable: 'pgmigrations',
     schema,
     createSchema: true,
+    noLock: true, // test files run in parallel, each in its own schema: the global lock would only make them collide
     log: () => {},
   });
   const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
