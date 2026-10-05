@@ -41,7 +41,7 @@ Layers inside the API: `routes` (validate input, call a service, shape the respo
 | T08 | Next.js frontend: form, results page, copy and edit             | T06, T07      | 6        | [x]    |
 | T09 | Cost tracking and cost report (per description / per 1,000)     | T05, T06, T08 | 3        | [x]    |
 | T10 | Tests, demo data and end-to-end demo walkthrough                | T01–T09       | 5        | [x]    |
-| T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [ ]    |
+| T11 | Release preparation: public/private split, README, tag v0.1.0   | T01–T10       | 3        | [x]    |
 
 Total: about 42 hours.
 

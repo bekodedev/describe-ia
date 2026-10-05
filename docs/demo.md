@@ -1,8 +1,7 @@
 # Demo walkthrough
 
-The live part of the video (block 7 of the script) takes two minutes. This page gets you there from a
-clean clone in under five, tells you what to enter and what to point out, and has a plan B for when
-something fails live.
+The live demo itself takes about two minutes. This page gets you there from a clean clone in under
+five, tells you what to enter and what to point out, and has a plan B for when something fails live.
 
 ## 1. Set up (once, about 5 minutes)
 
@@ -51,7 +50,7 @@ If something does not start: `docker compose logs api web`. Ports 3000, 4000 and
 | 10  | **History**.                                                  | Your product is first, with its photo; the five seeded ones below.                                                                                                                                           |
 | 11  | In a terminal: `curl localhost:4000/api/usage`.               | What the AI calls of this month cost, to the cent (zero with the fake model). The real figure for the product: about **$0.0024 per description, $2.44 per 1,000** ([cost report](experiments/t09-costs.md)). |
 
-Material for the story, if you want to show it on screen:
+Material for the story, if you want to show more than the app:
 
 - The first prompt failed in every run: [docs/experiments/t04-v1-outputs.md](experiments/t04-v1-outputs.md).
 - What fixed it, with numbers: [docs/experiments/t05-v1-vs-v2.md](experiments/t05-v1-vs-v2.md).
@@ -71,7 +70,7 @@ Material for the story, if you want to show it on screen:
 ## 4. Reset and check
 
 - Start again from nothing: `docker compose down -v` (this deletes the database and the photos), then step 1.
-- Before recording, remove old experiments from the history: `docker compose down -v` and the two commands of step 1.
+- Before presenting, remove old experiments from the history: `docker compose down -v` and the two commands of step 1.
 - The automated version of this walkthrough, with the fake model: `pnpm test:e2e` (starts its own stack,
   generates with and without a photo, copies, edits, reloads, checks the history and the seeded
   products, and tears everything down). It needs the development stack stopped.

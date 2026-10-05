@@ -5,3 +5,4 @@ pnpm-lock.yaml
 .internal
 docs/internal
 docs/PROJECT.md
+apps/web/next-env.d.ts
