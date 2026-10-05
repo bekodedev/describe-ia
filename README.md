@@ -74,7 +74,7 @@ Choices worth knowing about:
 You need Git and Docker. Nothing else.
 
 ```bash
-git clone <repository-url> describe-ia
+git clone https://github.com/bekodedev/describe-ia.git describe-ia
 cd describe-ia
 cp .env.example .env
 ```

@@ -9,7 +9,7 @@ You need Git and Docker. An Anthropic API key is optional: without one, the app 
 returns plausible descriptions (see "Plan B").
 
 ```bash
-git clone <repository-url> describe-ia
+git clone https://github.com/bekodedev/describe-ia.git describe-ia
 cd describe-ia
 cp .env.example .env
 ```

@@ -37,4 +37,4 @@ First release.
 Real authentication, roles and permissions, background jobs, bulk catalog import, billing, and the
 optimized production prompt. See the README.
 
-[0.1.0]: https://github.com/OWNER/describe-ia/releases/tag/v0.1.0
+[0.1.0]: https://github.com/bekodedev/describe-ia/releases/tag/v0.1.0
